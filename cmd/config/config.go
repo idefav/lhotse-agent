@@ -1,8 +1,8 @@
 package config
 
 type Service struct {
-	Name     string   `yaml:"name" json:"name,omitempty"`
-	Hosts    []string `yaml:"hosts" json:"hosts,omitempty"`
+	Name     string
+	Hosts    []string
 	Clusters []Cluster
 }
 
