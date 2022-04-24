@@ -1,4 +1,4 @@
-module idefav-proxy
+module lhotse-agent
 
 go 1.16
 
