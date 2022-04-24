@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"idefav-proxy/cmd/mgr"
-	_ "idefav-proxy/cmd/mgr"
-	"idefav-proxy/cmd/proxy"
+	"lhotse-agent/cmd/mgr"
+	_ "lhotse-agent/cmd/mgr"
+	"lhotse-agent/cmd/proxy"
 	"log"
 )
 

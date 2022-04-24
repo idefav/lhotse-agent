@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"idefav-proxy/pkg/log"
+	"lhotse-agent/pkg/log"
 )
 
 // Command line options

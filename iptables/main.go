@@ -15,7 +15,7 @@
 package main
 
 import (
-	"idefav-proxy/iptables/pkg/cmd"
+	"lhotse-agent/iptables/pkg/cmd"
 )
 
 func main() {

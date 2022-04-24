@@ -18,8 +18,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	types "idefav-proxy/iptables/pkg/config"
-	"idefav-proxy/pkg/log"
+	types "lhotse-agent/iptables/pkg/config"
+	"lhotse-agent/pkg/log"
 )
 
 // Command line options

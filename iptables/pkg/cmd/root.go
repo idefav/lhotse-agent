@@ -24,13 +24,13 @@ import (
 	"os/user"
 	"strings"
 
-	"idefav-proxy/iptables/pkg/capture"
-	"idefav-proxy/iptables/pkg/config"
-	"idefav-proxy/iptables/pkg/constants"
-	dep "idefav-proxy/iptables/pkg/dependencies"
-	"idefav-proxy/iptables/pkg/validation"
-	"idefav-proxy/pkg/env"
-	"idefav-proxy/pkg/log"
+	"lhotse-agent/iptables/pkg/capture"
+	"lhotse-agent/iptables/pkg/config"
+	"lhotse-agent/iptables/pkg/constants"
+	dep "lhotse-agent/iptables/pkg/dependencies"
+	"lhotse-agent/iptables/pkg/validation"
+	"lhotse-agent/pkg/env"
+	"lhotse-agent/pkg/log"
 )
 
 var (

@@ -15,12 +15,12 @@
 package cmd
 
 import (
-	"idefav-proxy/clean-iptables/pkg/config"
-	"idefav-proxy/iptables/pkg/builder"
-	common "idefav-proxy/iptables/pkg/capture"
-	types "idefav-proxy/iptables/pkg/config"
-	"idefav-proxy/iptables/pkg/constants"
-	dep "idefav-proxy/iptables/pkg/dependencies"
+	"lhotse-agent/clean-iptables/pkg/config"
+	"lhotse-agent/iptables/pkg/builder"
+	common "lhotse-agent/iptables/pkg/capture"
+	types "lhotse-agent/iptables/pkg/config"
+	"lhotse-agent/iptables/pkg/constants"
+	dep "lhotse-agent/iptables/pkg/dependencies"
 )
 
 func NewDependencies(cfg *config.Config) dep.Dependencies {

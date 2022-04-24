@@ -2,11 +2,11 @@ package proxy
 
 import (
 	"github.com/spf13/cobra"
-	"idefav-proxy/cmd/mgr"
-	"idefav-proxy/cmd/server"
-	"idefav-proxy/cmd/upgrade"
-	"idefav-proxy/pkg/log"
-	"idefav-proxy/pkg/pool"
+	"lhotse-agent/cmd/mgr"
+	"lhotse-agent/cmd/server"
+	"lhotse-agent/cmd/upgrade"
+	"lhotse-agent/pkg/log"
+	"lhotse-agent/pkg/pool"
 	"net"
 	"net/http"
 	"time"

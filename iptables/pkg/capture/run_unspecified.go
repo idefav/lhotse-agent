@@ -19,7 +19,7 @@ package capture
 import (
 	"errors"
 
-	"idefav-proxy/iptables/pkg/config"
+	"lhotse-agent/iptables/pkg/config"
 )
 
 var (

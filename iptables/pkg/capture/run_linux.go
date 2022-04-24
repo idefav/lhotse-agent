@@ -21,8 +21,8 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	"idefav-proxy/iptables/pkg/config"
-	"idefav-proxy/iptables/pkg/constants"
+	"lhotse-agent/iptables/pkg/config"
+	"lhotse-agent/iptables/pkg/constants"
 )
 
 // configureTProxyRoutes configures ip firewall rules to enable TPROXY support.

@@ -25,9 +25,9 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/spf13/viper"
 
-	"idefav-proxy/iptables/pkg/constants"
-	"idefav-proxy/pkg/log"
-	"idefav-proxy/util/sets"
+	"lhotse-agent/iptables/pkg/constants"
+	"lhotse-agent/pkg/log"
+	"lhotse-agent/util/sets"
 )
 
 // XTablesExittype is the exit type of xtables commands.

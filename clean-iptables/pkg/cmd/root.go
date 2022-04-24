@@ -24,11 +24,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"idefav-proxy/clean-iptables/pkg/config"
-	common "idefav-proxy/iptables/pkg/capture"
-	"idefav-proxy/iptables/pkg/constants"
-	"idefav-proxy/pkg/env"
-	"idefav-proxy/pkg/log"
+	"lhotse-agent/clean-iptables/pkg/config"
+	common "lhotse-agent/iptables/pkg/capture"
+	"lhotse-agent/iptables/pkg/constants"
+	"lhotse-agent/pkg/env"
+	"lhotse-agent/pkg/log"
 )
 
 var (

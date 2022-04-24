@@ -17,7 +17,7 @@ package dependencies
 import (
 	"strings"
 
-	"idefav-proxy/pkg/log"
+	"lhotse-agent/pkg/log"
 )
 
 // StdoutStubDependencies implementation of interface Dependencies, which is used for testing

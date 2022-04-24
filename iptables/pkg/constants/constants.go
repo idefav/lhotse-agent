@@ -17,7 +17,7 @@ package constants
 import (
 	"time"
 
-	"idefav-proxy/pkg/env"
+	"lhotse-agent/pkg/env"
 )
 
 // iptables tables

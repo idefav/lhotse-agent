@@ -17,7 +17,7 @@
 package env
 
 import (
-	"idefav-proxy/pkg/log"
+	"lhotse-agent/pkg/log"
 	"os"
 	"sort"
 	"strconv"

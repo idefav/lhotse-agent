@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"idefav-proxy/pkg/pool"
+	"lhotse-agent/pkg/pool"
 	"net"
 	"time"
 )

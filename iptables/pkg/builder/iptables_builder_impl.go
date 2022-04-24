@@ -16,10 +16,10 @@ package builder
 
 import (
 	"fmt"
-	"idefav-proxy/iptables/pkg/config"
-	"idefav-proxy/iptables/pkg/constants"
-	"idefav-proxy/iptables/pkg/log"
-	"idefav-proxy/util/sets"
+	"lhotse-agent/iptables/pkg/config"
+	"lhotse-agent/iptables/pkg/constants"
+	"lhotse-agent/iptables/pkg/log"
+	"lhotse-agent/util/sets"
 	"strings"
 )
 

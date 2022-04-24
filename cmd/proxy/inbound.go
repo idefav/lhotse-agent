@@ -3,9 +3,9 @@ package proxy
 import (
 	"bufio"
 	"fmt"
-	"idefav-proxy/cmd/upgrade"
-	"idefav-proxy/pkg/socket"
 	"io"
+	"lhotse-agent/cmd/upgrade"
+	"lhotse-agent/pkg/socket"
 	"log"
 	"net"
 	"strings"

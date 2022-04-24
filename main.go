@@ -1,7 +1,7 @@
 package main
 
 import (
-	"idefav-proxy/cmd"
+	"lhotse-agent/cmd"
 )
 
 func main() {

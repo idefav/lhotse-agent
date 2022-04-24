@@ -23,8 +23,8 @@ import (
 	"github.com/florianl/go-nflog/v2"
 	"golang.org/x/net/ipv4"
 
-	"idefav-proxy/pkg/env"
-	"idefav-proxy/pkg/log"
+	"lhotse-agent/pkg/env"
+	"lhotse-agent/pkg/log"
 )
 
 var TraceLoggingEnabled = env.RegisterBoolVar(

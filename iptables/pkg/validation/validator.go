@@ -23,8 +23,8 @@ import (
 	"strings"
 	"time"
 
-	"idefav-proxy/iptables/pkg/config"
-	"idefav-proxy/pkg/log"
+	"lhotse-agent/iptables/pkg/config"
+	"lhotse-agent/pkg/log"
 )
 
 var istioLocalIPv6 = net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6}

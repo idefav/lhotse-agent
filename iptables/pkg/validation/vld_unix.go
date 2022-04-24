@@ -25,8 +25,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"idefav-proxy/iptables/pkg/constants"
-	"idefav-proxy/pkg/log"
+	"lhotse-agent/iptables/pkg/constants"
+	"lhotse-agent/pkg/log"
 )
 
 // Recover the original address from redirect socket. Supposed to work for tcp over ipv4 and ipv6.
