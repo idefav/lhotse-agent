@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package lhotse.networking.v1alpha1;
+
+option go_package = "lhotse/networking/v1alpha1";
+
+message Service {
+    string service_name = 1;
+    repeated string hosts = 2;
+    repeated Cluster clusters = 3;
+}
+
+message Cluster {
+    string cluster_name = 1;
+    repeated Endpoint endpoints = 2;
+    TrafficPolicy traffic_policy = 3;
+}
+
+message Endpoint {
+    string ip = 1;
+    int32 port = 2;
+}
+
+message RouteRule {
+    string name = 1;
+    string service_name = 2;
+    repeated HttpRule http_rule = 3;
+}
+
+message HttpRule {
+    string name = 1;
+    HttpMatchRequest match = 2;
+    repeated HttpRouteDestination route = 3;
+    HttpRedirect redirect = 4;
+    HttpRewrite rewrite = 5;
+    int32 timeout = 6;
+}
+
+message HttpMatchRequest {
+    string name = 1;
+    StringMatch uri = 2;
+    StringMatch scheme = 3;
+    StringMatch method = 4;
+    StringMatch authority = 5;
+    map<string, StringMatch> headers = 6;
+    int32 port = 7;
+    map<string, string> source_labels = 8;
+    map<string, StringMatch> query_params = 9;
+    bool ignore_uri_case = 10;
+    map<string, StringMatch> without_headers = 11;
+}
+
+message StringMatch {
+    string exact = 1;
+    string prefix = 2;
+    string regex = 3;
+}
+
+message HttpRouteDestination {
+    Destination destination = 1;
+    int32 weight = 2;
+}
+
+message Destination {
+    string subset = 1;
+}
+
+message HttpRedirect {
+    string uri = 1;
+    string authority = 2;
+    int32 port = 3;
+    string scheme = 4;
+    string redirect_code = 5;
+}
+
+message HttpRewrite {
+    string uri = 1;
+    string authority = 2;
+}
+
+message TrafficPolicy {
+    LoadBalancerSettings load_balancer = 1;
+}
+
+message LoadBalancerSettings {
+    enum SimpleLB {
+        ROUND_ROBIN = 0;
+        LEAST_CONN = 1;
+        RANDOM = 2;
+        PASS_THROUGH = 3;
+    }
+    SimpleLB simple = 1;
+    ConsistentHashLb consistent_hash = 2;
+}
+
+message ConsistentHashLb {
+    string http_header_name = 1;
+    bool use_source_ip = 2;
+    string http_query_parameter_name = 3;
+    int32 minimum_ring_size = 4;
+}
+

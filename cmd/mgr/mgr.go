@@ -6,10 +6,11 @@ import (
 	"golang.org/x/net/context"
 	cleanCmd "lhotse-agent/clean-iptables/pkg/cmd"
 	cleanConfig "lhotse-agent/clean-iptables/pkg/config"
+	"lhotse-agent/cmd/proxy/config"
 	"lhotse-agent/cmd/server"
 	"lhotse-agent/cmd/upgrade"
 	"lhotse-agent/iptables/pkg/capture"
-	"lhotse-agent/iptables/pkg/config"
+	iptableConfig "lhotse-agent/iptables/pkg/config"
 	"lhotse-agent/iptables/pkg/constants"
 	dep "lhotse-agent/iptables/pkg/dependencies"
 	"lhotse-agent/iptables/pkg/validation"
@@ -24,11 +25,12 @@ import (
 
 type ManagementServer struct {
 	Server http.Server
+	cfg    *config.Config
 	Addr   string
 }
 
-func NewManagementServer(server http.Server) *ManagementServer {
-	return &ManagementServer{Server: server, Addr: ":18080"}
+func NewManagementServer(server http.Server, addr string) *ManagementServer {
+	return &ManagementServer{Server: server, Addr: addr}
 }
 
 func (m *ManagementServer) Startup() error {
@@ -120,7 +122,7 @@ func init() {
 
 	HttpMux.HandleFunc("/iptables", func(writer http.ResponseWriter, request *http.Request) {
 		envoyUserVar := env.RegisterStringVar(constants.EnvoyUser, "lhotse-agent", "Envoy proxy username")
-		cfg := &config.Config{
+		cfg := &iptableConfig.Config{
 			DryRun:                  false,
 			TraceLogging:            false,
 			RestoreFormat:           false,
@@ -202,7 +204,7 @@ var ManagerCmd = &cobra.Command{
 		iServer := http.Server{
 			Handler: HttpMux,
 		}
-		var idefavMgrServer = NewManagementServer(iServer)
+		var idefavMgrServer = NewManagementServer(iServer, ":18080")
 		server.RegisterServer(idefavMgrServer)
 
 		err := server.IdefavServerManager.Startup()

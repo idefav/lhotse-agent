@@ -8,6 +8,7 @@ import (
 	"lhotse-agent/pkg/socket"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -26,7 +27,7 @@ func (inProxyServer *InProxyServer) RemoveConn(conn net.Conn) error {
 }
 
 func (inProxyServer *InProxyServer) Startup() error {
-	ln, err := upgrade.Upgrade.Listen("tcp", ":15006")
+	ln, err := upgrade.Upgrade.Listen("tcp", ":"+strconv.Itoa(int(inProxyServer.Port)))
 	if err != nil {
 		return err
 	}
@@ -50,7 +51,6 @@ func (inProxyServer *InProxyServer) proc(ln net.Listener) error {
 	for {
 		conn, _ := ln.Accept()
 
-		//log.Println("接收到新Http请求", err2)
 		go func() {
 			defer conn.Close()
 			atomic.AddInt32(&inProxyServer.NumOpen, 1)
@@ -67,7 +67,7 @@ func (inProxyServer *InProxyServer) proc(ln net.Listener) error {
 
 			for {
 				//log.Println("准备读取")
-				conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+				conn.SetReadDeadline(time.Now().Add(inProxyServer.IdleTimeOut))
 				reader := bufio.NewReader(conn)
 				peek, err := reader.Peek(5)
 				if err != nil {
@@ -130,5 +130,3 @@ func (inProxyServer *InProxyServer) proc(ln net.Listener) error {
 
 	}
 }
-
-var InboundProxyServer = NewInProxyServer()

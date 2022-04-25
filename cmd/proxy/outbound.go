@@ -7,13 +7,14 @@ import (
 	"lhotse-agent/pkg/socket"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 )
 
 func (o *OutboundServer) Startup() error {
-	ln, err := upgrade.Upgrade.Listen("tcp", ":15001")
+	ln, err := upgrade.Upgrade.Listen("tcp", ":"+strconv.Itoa(int(o.Port)))
 	if err != nil {
 		return err
 	}
@@ -41,7 +42,7 @@ func (o *OutboundServer) proc(ln net.Listener) error {
 
 			for {
 				//log.Println("准备读取")
-				conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+				conn.SetReadDeadline(time.Now().Add(o.IdleTimeOut))
 				reader := bufio.NewReader(conn)
 				peek, err := reader.Peek(5)
 				if err != nil {
@@ -112,5 +113,3 @@ func (o *OutboundServer) Shutdown() error {
 	}
 	return nil
 }
-
-var OutboundProxyServer = NewOutboundServer()
