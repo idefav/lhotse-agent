@@ -84,7 +84,7 @@ func (inProxyServer *InProxyServer) proc(ln net.Listener) error {
 					if dst_host == "" {
 						dst_host = "192.168.0.105:28080"
 					}
-					inProxyServer.HttpProc(conn, reader, dst_host)
+					inProxyServer.HttpProc2(conn, reader, dst_host)
 				} else {
 					//log.Println(header)
 					//writer := bufio.NewWriter(conn)

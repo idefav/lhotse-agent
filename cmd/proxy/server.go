@@ -6,6 +6,7 @@ import (
 	"lhotse-agent/cmd/mgr"
 	"lhotse-agent/cmd/proxy/config"
 	"lhotse-agent/cmd/proxy/constants"
+	"lhotse-agent/cmd/proxy/data"
 	"lhotse-agent/cmd/server"
 	"lhotse-agent/cmd/upgrade"
 	"lhotse-agent/pkg/log"
@@ -53,6 +54,8 @@ var ProxyCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg := constructCfg()
 		log.Infof(cfg)
+
+		data.ServiceData.LoadServiceData(cfg.FileName)
 
 		// proxy 管理服务
 		mgrServer := http.Server{

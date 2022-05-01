@@ -23,6 +23,7 @@ require (
 	google.golang.org/api v0.74.0
 	google.golang.org/genproto v0.0.0-20220401170504-314d38edb7de
 	google.golang.org/grpc v1.45.0
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	istio.io/istio v0.0.0-20220402022427-11830ff79113
 	istio.io/pkg v0.0.0-20220401180253-331f8e6246a9
 	k8s.io/klog/v2 v2.60.1
