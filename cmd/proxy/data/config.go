@@ -6,7 +6,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"lhotse-agent/cmd/config"
-	"lhotse-agent/cmd/proxy/loadbalancer"
+	"lhotse-agent/cmd/config/loadbalancer"
 	"lhotse-agent/pkg/log"
 )
 
@@ -81,6 +81,10 @@ func (m *Maps) LoadServiceData(file string) {
 		return
 	}
 	for _, service := range pc.Services {
+		if service.LB == nil {
+			var balancer config.LoadBalancer = &loadbalancer.RoundRobinLoadBalancer{}
+			service.LB = &balancer
+		}
 		clusterMap, ok := m.Clusters[service.Name]
 		if !ok {
 			clusterMap = make(map[string]*config.Cluster, 0)
@@ -136,7 +140,7 @@ func Match(host string) (*config.Endpoint, error) {
 			return nil, errors.New("no cluster")
 		}
 		//
-		balancer := &loadbalancer.RandomLoadBalancer{}
+		balancer := *service.LB
 		endpoint := balancer.Select(endpoints)
 		return endpoint, nil
 	}

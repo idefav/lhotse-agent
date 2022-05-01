@@ -253,21 +253,6 @@ func (inProxyServer *InProxyServer) HttpProc2(conn net.Conn, reader *bufio.Reade
 
 	header, _ := tp.ReadMIMEHeader()
 
-	var passThrougn = false
-
-	host := header.Get("host")
-	if len(host) <= 0 {
-		passThrougn = true
-	}
-
-	if !passThrougn {
-		endpoint, err := data.Match(host)
-		if err == nil {
-			dst_host = fmt.Sprintf("%s:%s", endpoint.Ip, endpoint.Port)
-			log.Println(dst_host)
-		}
-	}
-
 	destConn, err0 := net.Dial("tcp", dst_host)
 	if err0 != nil {
 		var body = ""
@@ -289,38 +274,26 @@ func (inProxyServer *InProxyServer) HttpProc2(conn net.Conn, reader *bufio.Reade
 	dstWriter.W.Write([]byte(requestHeaderText))
 	dstWriter.W.Flush()
 
-	//var headerStr = requestLine + CRLF
-	//for k, v := range headers {
-	//	headerStr += fmt.Sprintf("%s: %s", k, v) + CRLF
-	//}
-	////log.Println("写入目标连接")
-	//contentLengthStr := headers[strings.ToLower("Content-Length")]
-	////destConn.Write(bytes[:n])
-	////n, _ := reader.Read(bytes)
-	////var bytes = make([]byte, 1024)
-	//_, err2 := destConn.Write([]byte(headerStr + CRLF))
-	//contentLength, err3 := strconv.Atoi(contentLengthStr)
-	//if err3 != nil {
-	//	contentLength = 0
-	//}
-	//if contentLength > 0 {
-	//	var sumReadLen = 0
-	//	for {
-	//		var bytes = make([]byte, 1024)
-	//		n, _ := reader.Read(bytes)
-	//		sumReadLen += n
-	//		destConn.Write(bytes[:n])
-	//		if sumReadLen >= contentLength {
-	//			break
-	//		}
-	//	}
-	//}
-	////destConn.Write([]byte(CRLF))
-	connections, ok := header["Connection"]
-	var connection = ""
-	if ok {
-		connection = connections[0]
+	contentLengthStr := header.Get("Content-Length")
+	connection := header.Get("Connection")
+
+	contentLength, err3 := strconv.Atoi(contentLengthStr)
+	if err3 != nil {
+		contentLength = 0
 	}
+	if contentLength > 0 {
+		var sumReadLen = 0
+		for {
+			var bytes = make([]byte, 1024)
+			n, _ := reader.Read(bytes)
+			sumReadLen += n
+			destConn.Write(bytes[:n])
+			if sumReadLen >= contentLength {
+				break
+			}
+		}
+	}
+
 	func() {
 		respReader := bufio.NewReader(destConn)
 
@@ -449,21 +422,27 @@ func (inProxyServer *InProxyServer) HttpProc2(conn net.Conn, reader *bufio.Reade
 }
 
 func (o *OutboundServer) HttpProc(conn net.Conn, reader *bufio.Reader, dst_host string) error {
-	var requestLine = ""
-	var headers = make(map[string]string)
-	reqLine, _, _ := reader.ReadLine()
-	requestLine = string(reqLine)
-	for {
-		line, _, _ := reader.ReadLine()
-		text := string(line)
-		if text == "" {
-			break
+	tp := textproto.NewReader(reader)
+	requestLine, _ := tp.ReadLine()
+
+	header, _ := tp.ReadMIMEHeader()
+
+	var passThrougn = false
+
+	host := header.Get("host")
+	if len(host) <= 0 {
+		passThrougn = true
+	}
+	connection := header.Get("Connection")
+
+	if !passThrougn {
+		endpoint, err := data.Match(host)
+		if err == nil {
+			dst_host = fmt.Sprintf("%s:%s", endpoint.Ip, endpoint.Port)
+			log.Println(dst_host)
 		}
-		split := strings.Split(text, HEADER_SPLIT)
-		headers[strings.ToLower(split[0])] = split[1]
 	}
 
-	connection := headers[strings.ToLower("Connection")]
 	destConn, err0 := net.Dial("tcp", dst_host)
 	if err0 != nil {
 		var body = ""
@@ -473,34 +452,39 @@ func (o *OutboundServer) HttpProc(conn net.Conn, reader *bufio.Reader, dst_host 
 		return nil
 	}
 
-	var headerStr = requestLine + CRLF
-	for k, v := range headers {
-		headerStr += fmt.Sprintf("%s: %s", k, v) + CRLF
+	var requestHeaderText = requestLine + CRLF
+	for k, hs := range header {
+		for _, h := range hs {
+			var headerLine = fmt.Sprintf("%s: %s%s", k, h, CRLF)
+			requestHeaderText += headerLine
+		}
 	}
-	contentLengthStr := headers[strings.ToLower("Content-Length")]
-	_, err2 := destConn.Write([]byte(headerStr + CRLF))
-	log.Println(headerStr + CRLF)
-	if err2 != nil {
-		log.Println(err2)
-	}
-	contentLength, err3 := strconv.Atoi(contentLengthStr)
-	if err3 != nil {
+	requestHeaderText += CRLF
+	dstWriter := textproto.NewWriter(bufio.NewWriter(destConn))
+	dstWriter.W.Write([]byte(requestHeaderText))
+	dstWriter.W.Flush()
+
+	contentLengthStr := header.Get("Content-length")
+
+	contentLength, err := strconv.Atoi(contentLengthStr)
+	if err != nil {
 		contentLength = 0
-		log.Println(err3)
 	}
+
 	if contentLength > 0 {
 		var sumReadLen = 0
 		for {
 			var bytes = make([]byte, 1024)
-			n, _ := reader.Read(bytes)
+			n, _ := tp.R.Read(bytes)
 			sumReadLen += n
-			destConn.Write(bytes[:n])
+			dstWriter.W.Write(bytes[:n])
+			dstWriter.W.Flush()
 			if sumReadLen >= contentLength {
 				break
 			}
 		}
-
 	}
+
 	func() {
 		respReader := bufio.NewReader(destConn)
 		line, _, _ := respReader.ReadLine()
@@ -617,5 +601,5 @@ func (o *OutboundServer) HttpProc(conn net.Conn, reader *bufio.Reader, dst_host 
 		}
 	}()
 
-	return err2
+	return nil
 }

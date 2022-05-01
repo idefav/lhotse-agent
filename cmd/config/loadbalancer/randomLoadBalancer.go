@@ -5,10 +5,6 @@ import (
 	"math/rand"
 )
 
-type LoadBalancer interface {
-	Select(endpoints []*config.Endpoint) *config.Endpoint
-}
-
 type RandomLoadBalancer struct {
 }
 

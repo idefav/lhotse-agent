@@ -9,6 +9,7 @@ type Service struct {
 	Name     string    `yaml:"name"`
 	Hosts    []string  `yaml:"hosts"`
 	Clusters []Cluster `yaml:"clusters"`
+	LB       *LoadBalancer
 }
 
 type Endpoint struct {
