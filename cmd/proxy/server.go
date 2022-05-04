@@ -24,16 +24,18 @@ type InProxyServer struct {
 	NumOpen     int32
 	IdleTimeOut time.Duration
 	ConnPool    pool.Pool
+	Cfg         *config.Config
 	Port        int32
 }
 
-func NewInProxyServer(idleTimeOut time.Duration, port int32) *InProxyServer {
+func NewInProxyServer(idleTimeOut time.Duration, port int32, cfg *config.Config) *InProxyServer {
 	return &InProxyServer{
 		Connections: make(map[string]net.Conn),
 		NumOpen:     0,
 		IdleTimeOut: idleTimeOut,
 		Port:        port,
 		ConnPool:    nil,
+		Cfg:         cfg,
 	}
 }
 
@@ -41,10 +43,11 @@ type OutboundServer struct {
 	NumOpen     int32
 	IdleTimeOut time.Duration
 	Port        int32
+	Cfg         *config.Config
 }
 
-func NewOutboundServer(idleTimeOut time.Duration, port int32) *OutboundServer {
-	return &OutboundServer{NumOpen: 0, IdleTimeOut: idleTimeOut, Port: port}
+func NewOutboundServer(idleTimeOut time.Duration, port int32, cfg *config.Config) *OutboundServer {
+	return &OutboundServer{NumOpen: 0, IdleTimeOut: idleTimeOut, Port: port, Cfg: cfg}
 }
 
 var ProxyCmd = &cobra.Command{
@@ -62,8 +65,8 @@ var ProxyCmd = &cobra.Command{
 			Handler: mgr.HttpMux,
 		}
 		server.RegisterServer(mgr.NewManagementServer(mgrServer, ":"+strconv.Itoa(int(cfg.ProxyMgrPort))))
-		server.RegisterServer(NewInProxyServer(cfg.ConnIdleTimeOut, cfg.InBoundProxyPort))
-		server.RegisterServer(NewOutboundServer(cfg.ConnIdleTimeOut, cfg.OutBoundProxyPort))
+		server.RegisterServer(NewInProxyServer(cfg.ConnIdleTimeOut, cfg.InBoundProxyPort, cfg))
+		server.RegisterServer(NewOutboundServer(cfg.ConnIdleTimeOut, cfg.OutBoundProxyPort, cfg))
 
 		err := server.IdefavServerManager.Startup()
 		if err != nil {

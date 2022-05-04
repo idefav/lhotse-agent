@@ -8,19 +8,20 @@ import (
 	"lhotse-agent/cmd/config"
 	"lhotse-agent/cmd/config/loadbalancer"
 	"lhotse-agent/pkg/log"
+	"lhotse-agent/pkg/protocol/http"
 )
 
 type MapsMatch interface {
 	GetService(host string) *config.Service
-	GetRule(service string) *config.RouteRule
-	GetServiceRule(host string) *config.RouteRule
-	GetEndpoints(serviceId string) *config.Endpoint
-	GetCluster(serviceId string) *config.Cluster
+	GetRule(service string) *config.RouteRuleList
+	GetServiceRule(host string) *config.RouteRuleList
+	GetEndpoints(serviceId string) *[]config.Endpoint
+	GetCluster(serviceId string) *[]config.Cluster
 }
 
 type Maps struct {
 	ServiceMap map[string]*config.Service
-	RuleMap    map[string]*config.RouteRule
+	RuleMap    map[string]*config.RouteRuleList
 	Endpoints  map[string]map[string]*config.Endpoint
 	Clusters   map[string]map[string]*config.Cluster
 }
@@ -28,7 +29,7 @@ type Maps struct {
 func NewMaps() *Maps {
 	return &Maps{
 		ServiceMap: make(map[string]*config.Service),
-		RuleMap:    make(map[string]*config.RouteRule),
+		RuleMap:    make(map[string]*config.RouteRuleList),
 		Endpoints:  map[string]map[string]*config.Endpoint{},
 		Clusters:   map[string]map[string]*config.Cluster{},
 	}
@@ -38,11 +39,11 @@ func (m *Maps) GetService(host string) *config.Service {
 	return m.ServiceMap[host]
 }
 
-func (m *Maps) GetRule(service string) *config.RouteRule {
+func (m *Maps) GetRule(service string) *config.RouteRuleList {
 	return m.RuleMap[service]
 }
 
-func (m *Maps) GetServiceRule(host string) *config.RouteRule {
+func (m *Maps) GetServiceRule(host string) *config.RouteRuleList {
 	service := m.GetService(host)
 	if service == nil {
 		return nil
@@ -106,35 +107,30 @@ func (m *Maps) LoadServiceData(file string) {
 				}
 			}
 		}
-	}
 
-	for _, rule := range pc.Rules {
-		m.RuleMap[rule.ServiceName] = &rule
-	}
-}
+		for _, rule := range service.Rules {
+			rules, ok := m.RuleMap[service.Name]
+			if !ok {
+				rules = &config.RouteRuleList{}
+			}
 
-func removeDuplicateElement(endpoints []*config.Endpoint) []*config.Endpoint {
-	result := make([]*config.Endpoint, 0, len(endpoints))
-	temp := map[string]struct{}{}
-	for _, item := range endpoints {
-		var key = fmt.Sprintf("%s:%s", item.Ip, item.Port)
-		if _, ok := temp[key]; !ok {
-			temp[key] = struct{}{}
-			result = append(result, item)
+			rs := append(*rules, rule)
+			rules = &rs
+			m.RuleMap[service.Name] = rules
+
 		}
 	}
-	return result
 }
 
 var ServiceData = NewMaps()
 
-func Match(host string) (*config.Endpoint, error) {
-	service := ServiceData.GetService(host)
+func Match(req *http.Request) (*config.Endpoint, error) {
+	service := ServiceData.GetService(req.Host)
 	if service == nil {
 		return nil, errors.New("no service")
 	}
-	rule := ServiceData.GetRule(service.Name)
-	if rule == nil {
+	rules := ServiceData.GetRule(service.Name)
+	if rules == nil || len(*rules) <= 0 {
 		endpoints := ServiceData.GetEndpoints(service.Name)
 		if len(endpoints) <= 0 {
 			return nil, errors.New("no cluster")
@@ -143,6 +139,17 @@ func Match(host string) (*config.Endpoint, error) {
 		balancer := *service.LB
 		endpoint := balancer.Select(endpoints)
 		return endpoint, nil
+	} else {
+		for _, rule := range *rules {
+			if rule.HttpRule == nil {
+				continue
+			}
+
+			if rule.HttpRule.Match != nil && len(rule.HttpRule.Match) > 0 {
+
+			}
+
+		}
 	}
 	return nil, errors.New("no endpoint")
 }

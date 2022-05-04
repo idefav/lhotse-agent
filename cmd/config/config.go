@@ -1,14 +1,28 @@
 package config
 
 type ProxyConfig struct {
-	Services []Service   `yaml:"services"`
-	Rules    []RouteRule `yaml:"rules"`
+	Services []Service `yaml:"services"`
+}
+
+type RouteRuleList []RouteRule
+
+func (r RouteRuleList) Len() int {
+	return len(r)
+}
+
+func (r RouteRuleList) Less(i, j int) bool {
+	return r[i].Order < r[j].Order
+}
+
+func (r RouteRuleList) Swap(i, j int) {
+	r[i], r[j] = r[j], r[i]
 }
 
 type Service struct {
-	Name     string    `yaml:"name"`
-	Hosts    []string  `yaml:"hosts"`
-	Clusters []Cluster `yaml:"clusters"`
+	Name     string        `yaml:"name"`
+	Hosts    []string      `yaml:"hosts"`
+	Clusters []Cluster     `yaml:"clusters"`
+	Rules    RouteRuleList `yaml:"rules"`
 	LB       *LoadBalancer
 }
 
@@ -49,18 +63,17 @@ type Cluster struct {
 }
 
 type RouteRule struct {
-	Name        string    `yaml:"name"`
-	ServiceName string    `yaml:"serviceName"`
-	HttpRule    HttpRoute `yaml:"httpRule"`
+	ServiceName string     `yaml:"serviceName"`
+	HttpRule    *HttpRoute `yaml:"httpRule"`
+	Order       int32      `yaml:"order"`
 }
 
 type HttpRoute struct {
-	Name     string                 `yaml:"name"`
-	Match    HttpMatchRequest       `yaml:"match"`
-	Route    []HttpRouteDestination `yaml:"route"`
-	Redirect HttpRedirect           `yaml:"redirect"`
-	Rewrite  HttpRewrite            `yaml:"rewrite"`
-	Timeout  int32                  `yaml:"timeout"`
+	Match    []*HttpMatchRequest     `yaml:"match"`
+	Route    []*HttpRouteDestination `yaml:"route"`
+	Redirect *HttpRedirect           `yaml:"redirect"`
+	Rewrite  *HttpRewrite            `yaml:"rewrite"`
+	Timeout  int32                   `yaml:"timeout"`
 }
 
 type HttpRouteDestination struct {
@@ -82,7 +95,6 @@ type HttpRewrite struct {
 }
 
 type HttpMatchRequest struct {
-	Name           string                 `yaml:"name"`
 	Uri            StringMatch            `yaml:"uri"`
 	Scheme         StringMatch            `yaml:"scheme"`
 	Method         StringMatch            `yaml:"method"`

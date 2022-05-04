@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"lhotse-agent/cmd/proxy/data"
+	lhotseHttp "lhotse-agent/pkg/protocol/http"
 	"log"
 	"net"
 	"net/textproto"
@@ -249,9 +250,12 @@ func (inProxyServer *InProxyServer) HttpProc(conn net.Conn, reader *bufio.Reader
 
 func (inProxyServer *InProxyServer) HttpProc2(conn net.Conn, reader *bufio.Reader, dst_host string) error {
 	tp := textproto.NewReader(reader)
-	requestLine, _ := tp.ReadLine()
-
-	header, _ := tp.ReadMIMEHeader()
+	request, err := lhotseHttp.ReadRequest(tp)
+	if err != nil {
+		return err
+	}
+	request.RemoteAddr = conn.RemoteAddr().String()
+	request.LocalAddr = conn.LocalAddr().String()
 
 	destConn, err0 := net.Dial("tcp", dst_host)
 	if err0 != nil {
@@ -262,8 +266,8 @@ func (inProxyServer *InProxyServer) HttpProc2(conn net.Conn, reader *bufio.Reade
 		return nil
 	}
 
-	var requestHeaderText = requestLine + CRLF
-	for k, hs := range header {
+	var requestHeaderText = request.FormatRequestLine() + CRLF
+	for k, hs := range request.Header {
 		for _, h := range hs {
 			var headerLine = fmt.Sprintf("%s: %s%s", k, h, CRLF)
 			requestHeaderText += headerLine
@@ -274,80 +278,42 @@ func (inProxyServer *InProxyServer) HttpProc2(conn net.Conn, reader *bufio.Reade
 	dstWriter.W.Write([]byte(requestHeaderText))
 	dstWriter.W.Flush()
 
-	contentLengthStr := header.Get("Content-Length")
-	connection := header.Get("Connection")
-
-	contentLength, err3 := strconv.Atoi(contentLengthStr)
-	if err3 != nil {
-		contentLength = 0
-	}
-	if contentLength > 0 {
-		var sumReadLen = 0
+	if request.ContentLength > 0 {
+		var sumReadLen int64 = 0
 		for {
 			var bytes = make([]byte, 1024)
 			n, _ := reader.Read(bytes)
-			sumReadLen += n
+			sumReadLen += int64(n)
 			destConn.Write(bytes[:n])
-			if sumReadLen >= contentLength {
+			if sumReadLen >= request.ContentLength {
 				break
 			}
 		}
 	}
 
-	func() {
+	func() error {
 		respReader := bufio.NewReader(destConn)
-
-		line, _, _ := respReader.ReadLine()
-		conn.Write([]byte(string(line) + CRLF))
-		conn.Write([]byte("Server: lhotse-agent" + CRLF))
-
-		var chunked = false
-		var responseConnValue = ""
-		respContentLength := 0
-		for {
-			headerBytes, _, _ := respReader.ReadLine()
-			header := string(headerBytes)
-			//log.Println(header)
-			if strings.Contains(header, "Transfer-Encoding") {
-				split := strings.Split(header, HEADER_SPLIT)
-				chunkedStr := split[1]
-				chunked = strings.ToLower(chunkedStr) == "chunked"
-				conn.Write([]byte(header + CRLF))
-				continue
-			}
-			if header == "" {
-				conn.Write([]byte(CRLF))
-				break
-			}
-			if strings.HasPrefix(header, "Connection") {
-				split := strings.Split(header, HEADER_SPLIT)
-				v := split[1]
-				responseConnValue = v
-				conn.Write([]byte("Connection: keep-alive" + CRLF))
-				continue
-			}
-			if strings.HasPrefix(header, "Keep-Alive") {
-				conn.Write([]byte("Keep-Alive: timeout=60" + CRLF))
-				continue
-			}
-			if strings.HasPrefix(header, "Content-Length") {
-				split := strings.Split(header, HEADER_SPLIT)
-				respContentLengthStr := split[1]
-				respContentLen, err := strconv.Atoi(respContentLengthStr)
-				if err != nil {
-					respContentLength = 0
-				} else {
-					respContentLength = respContentLen
-				}
-			}
-			conn.Write([]byte(header + CRLF))
+		respTpReader := textproto.NewReader(respReader)
+		response, err2 := lhotseHttp.ReadResponse(respTpReader, request)
+		if err2 != nil {
+			return err
 		}
+		response.Header.Add("Server", inProxyServer.Cfg.ServerName)
+		var responseHeaderText = response.FormatStatusLine() + CRLF
+		for k, hs := range response.Header {
+			for _, h := range hs {
+				var headerLine = fmt.Sprintf("%s: %s%s", k, h, CRLF)
+				responseHeaderText += headerLine
+			}
+		}
+		responseHeaderText += CRLF
+		conn.Write([]byte(responseHeaderText))
 
-		for chunked {
+		for response.Chunked {
 			line, _, err := respReader.ReadLine()
 			if err != nil {
 				log.Println(err)
-				return
+				return err
 			}
 
 			lineText := string(line)
@@ -359,12 +325,12 @@ func (inProxyServer *InProxyServer) HttpProc2(conn net.Conn, reader *bufio.Reade
 			chunkSize64, err := strconv.ParseInt(lineText, 16, 32)
 			if err != nil {
 				log.Println(err)
-				return
+				return err
 			}
 			chunkSize := int(chunkSize64)
 			if chunkSize == 0 {
 				conn.Write([]byte(CRLF))
-				return
+				return err
 			}
 
 			var sumReadLen = 0
@@ -385,62 +351,40 @@ func (inProxyServer *InProxyServer) HttpProc2(conn net.Conn, reader *bufio.Reade
 
 		}
 
-		if respContentLength > 0 {
-			var sumReadLen = 0
+		if response.ContentLength > 0 {
+			var sumReadLen int64 = 0
 			for {
 				var bytes = make([]byte, 1024)
 				l, _ := respReader.Read(bytes)
-				sumReadLen += l
+				sumReadLen += int64(l)
 				conn.Write(bytes[:l])
-				if sumReadLen >= respContentLength {
+				if sumReadLen >= response.ContentLength {
 					break
 				}
 			}
 		}
 		conn.Write([]byte(CRLF))
 
-		//c.Write([]byte("Connection: close\r\n"))
-		//respReader.WriteTo(conn)
-		//io.Copy(ctx.conn.c, destConn)
-		//log.Println("响应结束")
-		//destConn.Close()
-		if strings.ToLower(responseConnValue) == "close" {
-			//inProxyServer.ConnPool.Close(destConn0)
-			conn.Close()
-		} else {
-			//log.Println("连接放回池子")
-			//inProxyServer.ConnPool.Put(destConn0)
-		}
-
-		if strings.ToLower(connection) == "close" {
+		if response.Close || request.Close {
 			conn.Close()
 		}
+		return nil
 	}()
-
 	return nil
 
 }
 
 func (o *OutboundServer) HttpProc(conn net.Conn, reader *bufio.Reader, dst_host string) error {
 	tp := textproto.NewReader(reader)
-	requestLine, _ := tp.ReadLine()
-
-	header, _ := tp.ReadMIMEHeader()
-
-	var passThrougn = false
-
-	host := header.Get("host")
-	if len(host) <= 0 {
-		passThrougn = true
+	request, err2 := lhotseHttp.ReadRequest(tp)
+	if err2 != nil {
+		return err2
 	}
-	connection := header.Get("Connection")
 
-	if !passThrougn {
-		endpoint, err := data.Match(host)
-		if err == nil {
-			dst_host = fmt.Sprintf("%s:%s", endpoint.Ip, endpoint.Port)
-			log.Println(dst_host)
-		}
+	endpoint, err := data.Match(request)
+	if err == nil {
+		dst_host = fmt.Sprintf("%s:%s", endpoint.Ip, endpoint.Port)
+		log.Println(dst_host)
 	}
 
 	destConn, err0 := net.Dial("tcp", dst_host)
@@ -452,8 +396,8 @@ func (o *OutboundServer) HttpProc(conn net.Conn, reader *bufio.Reader, dst_host 
 		return nil
 	}
 
-	var requestHeaderText = requestLine + CRLF
-	for k, hs := range header {
+	var requestHeaderText = request.FormatRequestLine() + CRLF
+	for k, hs := range request.Header {
 		for _, h := range hs {
 			var headerLine = fmt.Sprintf("%s: %s%s", k, h, CRLF)
 			requestHeaderText += headerLine
@@ -464,81 +408,43 @@ func (o *OutboundServer) HttpProc(conn net.Conn, reader *bufio.Reader, dst_host 
 	dstWriter.W.Write([]byte(requestHeaderText))
 	dstWriter.W.Flush()
 
-	contentLengthStr := header.Get("Content-length")
-
-	contentLength, err := strconv.Atoi(contentLengthStr)
-	if err != nil {
-		contentLength = 0
-	}
-
-	if contentLength > 0 {
-		var sumReadLen = 0
+	if request.ContentLength > 0 {
+		var sumReadLen int64 = 0
 		for {
 			var bytes = make([]byte, 1024)
 			n, _ := tp.R.Read(bytes)
-			sumReadLen += n
+			sumReadLen += int64(n)
 			dstWriter.W.Write(bytes[:n])
 			dstWriter.W.Flush()
-			if sumReadLen >= contentLength {
+			if sumReadLen >= request.ContentLength {
 				break
 			}
 		}
 	}
 
-	func() {
+	func() error {
 		respReader := bufio.NewReader(destConn)
-		line, _, _ := respReader.ReadLine()
-		conn.Write([]byte(string(line) + CRLF))
-		conn.Write([]byte("Server: lhotse-agent" + CRLF))
-
-		var responseConnValue = ""
-		var chunked = false
-		respContentLength := 0
-		for {
-			headerBytes, _, _ := respReader.ReadLine()
-			header := string(headerBytes)
-			log.Println(header)
-			if strings.Contains(header, "Transfer-Encoding") {
-				split := strings.Split(header, HEADER_SPLIT)
-				chunkedStr := split[1]
-				chunked = strings.ToLower(chunkedStr) == "chunked"
-				conn.Write([]byte(header + CRLF))
-				continue
-			}
-			if header == "" {
-				conn.Write([]byte(CRLF))
-				break
-			}
-			if strings.HasPrefix(header, "Connection") {
-				split := strings.Split(header, HEADER_SPLIT)
-				v := split[1]
-				responseConnValue = v
-				//conn.Write([]byte("Connection: keep-alive" + CRLF))
-				continue
-			}
-			if strings.HasPrefix(header, "Keep-Alive") {
-				//conn.Write([]byte("Keep-Alive: timeout=60" + CRLF))
-				continue
-			}
-			if strings.HasPrefix(header, "Content-Length") {
-				split := strings.Split(header, HEADER_SPLIT)
-				respContentLengthStr := split[1]
-				respContentLen, err := strconv.Atoi(respContentLengthStr)
-				if err != nil {
-					respContentLength = 0
-				} else {
-					respContentLength = respContentLen
-				}
-			}
-
-			conn.Write([]byte(header + CRLF))
+		respTpReader := textproto.NewReader(respReader)
+		response, err3 := lhotseHttp.ReadResponse(respTpReader, request)
+		if err3 != nil {
+			return err3
 		}
+		response.Header.Add("Server", o.Cfg.ServerName)
+		var responseHeaderText = response.FormatStatusLine() + CRLF
+		for k, hs := range response.Header {
+			for _, h := range hs {
+				var headerLine = fmt.Sprintf("%s: %s%s", k, h, CRLF)
+				responseHeaderText += headerLine
+			}
+		}
+		responseHeaderText += CRLF
+		conn.Write([]byte(responseHeaderText))
 
-		for chunked {
+		for response.Chunked {
 			line, _, err := respReader.ReadLine()
 			if err != nil {
 				log.Println(err)
-				return
+				return err
 			}
 
 			lineText := string(line)
@@ -550,13 +456,13 @@ func (o *OutboundServer) HttpProc(conn net.Conn, reader *bufio.Reader, dst_host 
 			chunkSize64, err := strconv.ParseInt(lineText, 16, 32)
 			if err != nil {
 				log.Println(err)
-				return
+				return err
 			}
 			chunkSize := int(chunkSize64)
 			if chunkSize == 0 {
 				lastLine, _, _ := respReader.ReadLine()
 				conn.Write([]byte(string(lastLine) + CRLF))
-				return
+				return err
 			}
 
 			var sumReadLen = 0
@@ -576,29 +482,26 @@ func (o *OutboundServer) HttpProc(conn net.Conn, reader *bufio.Reader, dst_host 
 
 		}
 
-		if respContentLength > 0 {
-			var sumReadLen = 0
+		if response.ContentLength > 0 {
+			var sumReadLen int64 = 0
 			for {
 				var bytes = make([]byte, 1024)
 				l, _ := respReader.Read(bytes)
-				sumReadLen += l
+				sumReadLen += int64(l)
 				conn.Write(bytes[:l])
-				if sumReadLen >= respContentLength {
+				if sumReadLen >= response.ContentLength {
 					break
 				}
 			}
 
 		}
 		conn.Write([]byte(CRLF))
-		if strings.ToLower(responseConnValue) == "close" {
+		if response.Close || request.Close {
 			log.Println("链接关闭")
 			conn.Close()
 		}
 
-		if strings.ToLower(connection) == "close" {
-			log.Println("链接关闭")
-			conn.Close()
-		}
+		return nil
 	}()
 
 	return nil
