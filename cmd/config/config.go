@@ -50,6 +50,7 @@ type ConsistentHashLB struct {
 type LoadBalancerSettings struct {
 	Simple         SimpleLB         `yaml:"simple"`
 	ConsistentHash ConsistentHashLB `yaml:"consistentHash"`
+	LoadBalancer   *LoadBalancer
 }
 
 type TrafficPolicy struct {
@@ -63,22 +64,23 @@ type Cluster struct {
 }
 
 type RouteRule struct {
-	ServiceName string     `yaml:"serviceName"`
-	HttpRule    *HttpRoute `yaml:"httpRule"`
-	Order       int32      `yaml:"order"`
+	ServiceName string       `yaml:"serviceName"`
+	Http        []*HttpRoute `yaml:"http"`
+	Order       int32        `yaml:"order"`
 }
 
 type HttpRoute struct {
-	Match    []*HttpMatchRequest     `yaml:"match"`
-	Route    []*HttpRouteDestination `yaml:"route"`
-	Redirect *HttpRedirect           `yaml:"redirect"`
-	Rewrite  *HttpRewrite            `yaml:"rewrite"`
-	Timeout  int32                   `yaml:"timeout"`
+	Match        []*HttpMatchRequest     `yaml:"match"`
+	Route        []*HttpRouteDestination `yaml:"route"`
+	Redirect     *HttpRedirect           `yaml:"redirect"`
+	Rewrite      *HttpRewrite            `yaml:"rewrite"`
+	Timeout      int32                   `yaml:"timeout"`
+	LoadBalancer *WeightRoundRobinBalancer
 }
 
 type HttpRouteDestination struct {
 	Destination Destination `yaml:"destination"`
-	Weight      int32       `yaml:"weight"`
+	Weight      int32       `default:"100"" yaml:"weight"`
 }
 
 type HttpRedirect struct {
@@ -111,6 +113,10 @@ type StringMatch struct {
 	Exact  string `yaml:"exact"`
 	Prefix string `yaml:"prefix"`
 	Regex  string `yaml:"regex"`
+}
+
+func (sm *StringMatch) Empty() bool {
+	return !(sm.Prefix != "" || sm.Exact != "" || sm.Regex != "")
 }
 
 type Destination struct {

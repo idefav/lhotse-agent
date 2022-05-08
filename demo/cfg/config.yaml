@@ -1,0 +1,45 @@
+services:
+  - name: hello-demo
+    hosts:
+      - hello-demo.idefav.com:15006
+      - hello-demo:15006
+      - hello:15006
+      - localhost:15006
+      - localhost:15001
+    clusters:
+      - name: v1
+        endpoints:
+          - ip: 127.0.0.1
+            port: 28080
+        trafficPolicy:
+          loadBalancer:
+            simple: RANDOM
+      - name: v2
+        endpoints:
+          - ip: 192.168.0.105
+            port: 28080
+        trafficPolicy:
+          loadBalancer:
+            simple: RANDOM
+    rules:
+      - name: rule-1
+        serviceName: hello-demo
+        http:
+          - match:
+              - uri:
+                  prefix: /api/hello
+                method:
+                  exact: POST
+            route:
+              - destination:
+                  cluster: v1
+                weight: 100
+          - match:
+              - uri:
+                  prefix: /api/hello
+                method:
+                  exact: GET
+            route:
+              - destination:
+                  cluster: v2
+                weight: 100

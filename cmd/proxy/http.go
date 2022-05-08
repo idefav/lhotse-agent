@@ -384,7 +384,7 @@ func (o *OutboundServer) HttpProc(conn net.Conn, reader *bufio.Reader, dst_host 
 	endpoint, err := data.Match(request)
 	if err == nil {
 		dst_host = fmt.Sprintf("%s:%s", endpoint.Ip, endpoint.Port)
-		log.Println(dst_host)
+		log.Println(">>>", dst_host)
 	}
 
 	destConn, err0 := net.Dial("tcp", dst_host)

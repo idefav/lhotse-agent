@@ -1,14 +1,13 @@
-package loadbalancer
+package config
 
 import (
-	"lhotse-agent/cmd/config"
 	"math/rand"
 )
 
 type RandomLoadBalancer struct {
 }
 
-func (r *RandomLoadBalancer) Select(endpoints []*config.Endpoint) *config.Endpoint {
+func (r *RandomLoadBalancer) Select(endpoints []*Endpoint) *Endpoint {
 	if len(endpoints) <= 0 {
 		return nil
 	}

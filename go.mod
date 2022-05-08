@@ -9,6 +9,7 @@ require github.com/spf13/cobra v1.4.0
 require (
 	cloud.google.com/go/logging v1.4.2
 	github.com/cenkalti/backoff/v4 v4.1.2
+	github.com/creasty/defaults v1.6.0
 	github.com/florianl/go-nflog/v2 v2.0.1
 	github.com/go-logr/logr v1.2.3
 	github.com/google/martian v2.1.0+incompatible
@@ -23,7 +24,8 @@ require (
 	google.golang.org/api v0.74.0
 	google.golang.org/genproto v0.0.0-20220401170504-314d38edb7de
 	google.golang.org/grpc v1.45.0
-	gopkg.in/yaml.v2 v2.4.0 // indirect
+	google.golang.org/protobuf v1.28.0
+	gopkg.in/yaml.v2 v2.4.0
 	istio.io/istio v0.0.0-20220402022427-11830ff79113
 	istio.io/pkg v0.0.0-20220401180253-331f8e6246a9
 	k8s.io/klog/v2 v2.60.1
