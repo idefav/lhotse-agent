@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package lhotse.networking.v1alpha1;
+
+import "google/protobuf/any.proto";
+
+option go_package = "lhotse/networking/v1alpha1";
+
+message DataPush {
+    enum DataCategory {
+        SERVICE = 0;
+        CLUSTER = 1;
+        ENDPOINT = 2;
+        RULE = 3;
+    }
+    DataCategory category = 1;// 数据类型
+    google.protobuf.Any data = 2;// 数据
+
+}
