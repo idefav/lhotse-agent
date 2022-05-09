@@ -32,8 +32,8 @@ services:
                   exact: POST
             route:
               - destination:
-                  cluster: v1
-                weight: 100
+                  cluster: v2
+                weight: 90
           - match:
               - uri:
                   prefix: /api/hello

@@ -9,4 +9,6 @@ type Config struct {
 	InBoundProxyPort  int32
 	OutBoundProxyPort int32
 	ConnIdleTimeOut   time.Duration
+	CacheFileName     string
+	CacheDuration     time.Duration
 }

@@ -6,6 +6,7 @@ import (
 	"io"
 	"lhotse-agent/cmd/upgrade"
 	"lhotse-agent/pkg/socket"
+	"lhotse-agent/util"
 	"log"
 	"net"
 	"strconv"
@@ -32,7 +33,9 @@ func (inProxyServer *InProxyServer) Startup() error {
 		return err
 	}
 
-	go inProxyServer.proc(ln)
+	util.GO(func() {
+		inProxyServer.proc(ln)
+	})
 
 	return nil
 }
@@ -51,7 +54,7 @@ func (inProxyServer *InProxyServer) proc(ln net.Listener) error {
 	for {
 		conn, _ := ln.Accept()
 
-		go func() {
+		util.GO(func() {
 			defer conn.Close()
 			atomic.AddInt32(&inProxyServer.NumOpen, 1)
 			defer atomic.AddInt32(&inProxyServer.NumOpen, -1)
@@ -106,14 +109,14 @@ func (inProxyServer *InProxyServer) proc(ln net.Listener) error {
 						conn.Close()
 						return
 					} else {
-						go func() {
+						util.GO(func() {
 							_, err := reader.WriteTo(destConn)
 							if err != nil {
 								conn.Close()
 								destConn.Close()
 								return
 							}
-						}()
+						})
 						_, err = io.Copy(conn, destConn)
 						if err != nil {
 							conn.Close()
@@ -126,7 +129,7 @@ func (inProxyServer *InProxyServer) proc(ln net.Listener) error {
 				}
 			}
 
-		}()
+		})
 
 	}
 }

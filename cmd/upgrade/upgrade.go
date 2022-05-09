@@ -3,6 +3,7 @@ package upgrade
 import (
 	"fmt"
 	"github.com/cloudflare/tableflip"
+	"lhotse-agent/util"
 	"log"
 	"os"
 	"os/signal"
@@ -24,7 +25,7 @@ func init() {
 
 	log.SetPrefix(fmt.Sprintf("[PID: %d] ", os.Getpid()))
 
-	go func() {
+	util.GO(func() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGHUP)
 		for range sig {
@@ -34,7 +35,7 @@ func init() {
 				log.Println("Upgrade failed:", err)
 			}
 		}
-	}()
+	})
 }
 
 func Ready() {

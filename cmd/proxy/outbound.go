@@ -5,6 +5,7 @@ import (
 	"io"
 	"lhotse-agent/cmd/upgrade"
 	"lhotse-agent/pkg/socket"
+	"lhotse-agent/util"
 	"log"
 	"net"
 	"strconv"
@@ -18,7 +19,9 @@ func (o *OutboundServer) Startup() error {
 	if err != nil {
 		return err
 	}
-	go o.proc(ln)
+	util.GO(func() {
+		o.proc(ln)
+	})
 	return nil
 }
 
@@ -27,7 +30,7 @@ func (o *OutboundServer) proc(ln net.Listener) error {
 		conn, _ := ln.Accept()
 
 		//log.Println("接收到新Http请求", err2)
-		go func() {
+		util.GO(func() {
 			defer conn.Close()
 			atomic.AddInt32(&o.NumOpen, 1)
 			defer atomic.AddInt32(&o.NumOpen, -1)
@@ -81,14 +84,14 @@ func (o *OutboundServer) proc(ln net.Listener) error {
 						conn.Close()
 						return
 					} else {
-						go func() {
+						util.GO(func() {
 							_, err := reader.WriteTo(destConn)
 							if err != nil {
 								conn.Close()
 								destConn.Close()
 								return
 							}
-						}()
+						})
 						_, err = io.Copy(conn, destConn)
 						if err != nil {
 							conn.Close()
@@ -101,8 +104,7 @@ func (o *OutboundServer) proc(ln net.Listener) error {
 				}
 			}
 
-		}()
-
+		})
 	}
 }
 

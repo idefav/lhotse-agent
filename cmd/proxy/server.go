@@ -58,7 +58,7 @@ var ProxyCmd = &cobra.Command{
 		cfg := constructCfg()
 		log.Infof(cfg)
 
-		data.ServiceData.LoadServiceData(cfg.FileName)
+		data.Load(cfg)
 
 		// proxy 管理服务
 		mgrServer := http.Server{
@@ -85,10 +85,12 @@ func constructCfg() *config.Config {
 	cfg := &config.Config{
 		ServerName:        viper.GetString(constants.ServerName),
 		FileName:          viper.GetString(constants.FileName),
+		CacheFileName:     viper.GetString(constants.CacheFileName),
 		ProxyMgrPort:      viper.GetInt32(constants.ProxyMgrPort),
 		InBoundProxyPort:  viper.GetInt32(constants.InBoundProxyPort),
 		OutBoundProxyPort: viper.GetInt32(constants.OutBoundProxyPort),
 		ConnIdleTimeOut:   viper.GetDuration(constants.ConnIdleTimeOut),
+		CacheDuration:     viper.GetDuration(constants.CacheDuration),
 	}
 	return cfg
 }
@@ -104,6 +106,14 @@ func bindFlags(cmd *cobra.Command, args []string) {
 	}
 
 	if err := viper.BindPFlag(constants.FileName, cmd.Flags().Lookup(constants.FileName)); err != nil {
+		handleError(err)
+	}
+
+	if err := viper.BindPFlag(constants.CacheFileName, cmd.Flags().Lookup(constants.CacheFileName)); err != nil {
+		handleError(err)
+	}
+
+	if err := viper.BindPFlag(constants.CacheDuration, cmd.Flags().Lookup(constants.CacheDuration)); err != nil {
 		handleError(err)
 	}
 
@@ -136,10 +146,12 @@ func handleErrorWithCode(err error, code int) {
 func bindCmdFlags(rootCmd *cobra.Command) {
 	rootCmd.Flags().StringP(constants.ServerName, "s", "Lhotse Proxy", "服务器名称")
 	rootCmd.Flags().StringP(constants.FileName, "c", "config.yaml", "配置文件名称")
+	rootCmd.Flags().String(constants.CacheFileName, "cache.json", "缓存配置文件名称")
 	rootCmd.Flags().Int32P(constants.ProxyMgrPort, "m", 15030, "Proxy服务管理端口")
 	rootCmd.Flags().Int32P(constants.InBoundProxyPort, "i", 15006, "Proxy服务入口流量代理端口")
 	rootCmd.Flags().Int32P(constants.OutBoundProxyPort, "o", 15001, "Proxy服务出口流量代理端口")
 	rootCmd.Flags().Duration(constants.ConnIdleTimeOut, 60*time.Second, "空闲链接默认超时时间")
+	rootCmd.Flags().Duration(constants.CacheDuration, 60*time.Second, "配置定时保存时间间隔")
 }
 
 func init() {

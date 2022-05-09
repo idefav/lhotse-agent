@@ -1,17 +1,27 @@
 package data
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/creasty/defaults"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"lhotse-agent/cmd/config"
+	proxyConfig "lhotse-agent/cmd/proxy/config"
 	"lhotse-agent/pkg/log"
 	"lhotse-agent/pkg/protocol/http"
+	"lhotse-agent/util"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+var (
+	SAVE_TO_FILE = "SAVE2FILE"
 )
 
 type MapsMatch interface {
@@ -23,19 +33,67 @@ type MapsMatch interface {
 }
 
 type Maps struct {
-	ServiceMap map[string]*config.Service
-	RuleMap    map[string]*config.RouteRuleList
-	Endpoints  map[string]map[string]*config.Endpoint
-	Clusters   map[string]map[string]*config.Cluster
+	save       chan string
+	ServiceMap map[string]*config.Service             `json:"serviceMap" yaml:"serviceMap"`
+	RuleMap    map[string]*config.RouteRuleList       `json:"ruleMap" yaml:"ruleMap"`
+	Endpoints  map[string]map[string]*config.Endpoint `json:"endpoints" yaml:"endpoints"`
+	Clusters   map[string]map[string]*config.Cluster  `json:"clusters" yaml:"clusters"`
+}
+
+type CowMaps struct {
+	v atomic.Value
+	m sync.Mutex // used only by writers
+}
+
+func (cm *CowMaps) copy(dst *Maps, src *Maps) {
+	dataSrc, err := json.Marshal(src)
+	if err != nil {
+		log.Error("拷贝失败, 源对象json序列化失败", err)
+		return
+	}
+	if err = json.Unmarshal(dataSrc, dst); err != nil {
+		log.Error("拷贝失败, 反序列化到目标对象失败")
+		return
+	}
+}
+
+func (cm *CowMaps) dup(src *Maps) (dst *Maps) {
+	dst = NewMaps()
+	cm.copy(dst, src)
+	return dst
+}
+
+func NewCowMaps(maps *Maps) *CowMaps {
+	cowMaps := new(CowMaps)
+	cowMaps.v.Store(cowMaps.dup(maps))
+	return cowMaps
+}
+
+func (cm *CowMaps) Get() *Maps {
+	return cm.v.Load().(*Maps)
+}
+
+func (cm *CowMaps) Update(callback func(maps *Maps) *Maps) {
+	cm.m.Lock()
+	defer cm.m.Unlock()
+
+	srcObj := cm.v.Load().(*Maps)
+	dstObj := cm.dup(srcObj)
+	cm.v.Store(callback(dstObj))
 }
 
 func NewMaps() *Maps {
 	return &Maps{
+		save:       make(chan string, 1),
 		ServiceMap: make(map[string]*config.Service),
 		RuleMap:    make(map[string]*config.RouteRuleList),
 		Endpoints:  map[string]map[string]*config.Endpoint{},
 		Clusters:   map[string]map[string]*config.Cluster{},
 	}
+}
+
+func SaveAsync() {
+	ServiceData.Get().save <- SAVE_TO_FILE
 }
 
 func (m *Maps) GetService(host string) *config.Service {
@@ -70,6 +128,69 @@ func (m *Maps) GetCluster(serviceId string) []*config.Cluster {
 		clusters = append(clusters, cluster)
 	}
 	return clusters
+}
+
+func (m *Maps) SaveCache(cacheFile string) {
+	util.GO(func() {
+		for {
+			select {
+			case save := <-m.save:
+				if save == SAVE_TO_FILE {
+					log.Infof("Save Config to file.")
+					cacheData, err := json.Marshal(m)
+					if err != nil {
+						log.Error("配置数据Json序列化失败", err)
+						return
+					}
+					err = ioutil.WriteFile(cacheFile, cacheData, 644)
+					if err != nil {
+						log.Error("缓存配置数据到文件失败", err)
+					}
+				}
+			}
+		}
+	})
+}
+
+func (m *Maps) LoadCache(cacheFile string) {
+	file, err := ioutil.ReadFile(cacheFile)
+	if err != nil {
+		log.Error("获取缓存数据失败", err)
+		return
+	}
+	if err = json.Unmarshal(file, m); err != nil {
+		log.Error("缓存数据json反序列化失败", err)
+		return
+	}
+}
+
+var AutoSaveTimer *time.Timer
+
+func Load(cfg *proxyConfig.Config) {
+	defer SaveAsync()
+	if cfg.CacheFileName != "" {
+		// 加载缓存数据
+		ServiceData.Get().LoadCache(cfg.CacheFileName)
+	}
+	// 加载静态配置数据
+	ServiceData.Get().LoadServiceData(cfg.FileName)
+	// 保存缓存
+	ServiceData.Get().SaveCache(cfg.CacheFileName)
+	defer util.GO(func() {
+		if AutoSaveTimer == nil {
+			AutoSaveTimer = time.NewTimer(cfg.CacheDuration)
+		}
+		for {
+			if AutoSaveTimer == nil {
+				break
+			}
+			select {
+			case <-AutoSaveTimer.C:
+				SaveAsync()
+			}
+		}
+	})
+
 }
 
 func (m *Maps) LoadServiceData(file string) {
@@ -171,16 +292,16 @@ func (m *Maps) LoadServiceData(file string) {
 	}
 }
 
-var ServiceData = NewMaps()
+var ServiceData = NewCowMaps(NewMaps())
 
 func Match(req *http.Request) (*config.Endpoint, error) {
-	service := ServiceData.GetService(req.Host)
+	service := ServiceData.Get().GetService(req.Host)
 	if service == nil {
 		return nil, errors.New("no service")
 	}
-	rules := ServiceData.GetRule(service.Name)
+	rules := ServiceData.Get().GetRule(service.Name)
 	if rules == nil || len(*rules) <= 0 {
-		endpoints := ServiceData.GetEndpoints(service.Name)
+		endpoints := ServiceData.Get().GetEndpoints(service.Name)
 		if len(endpoints) <= 0 {
 			return nil, errors.New("no cluster")
 		}
@@ -295,7 +416,7 @@ func Match(req *http.Request) (*config.Endpoint, error) {
 							if err != nil {
 								return nil, err
 							}
-							clusterMap, ok := ServiceData.Clusters[service.Name]
+							clusterMap, ok := ServiceData.Get().Clusters[service.Name]
 							if !ok {
 								return nil, errors.New("service no cluster")
 							}

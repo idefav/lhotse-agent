@@ -16,6 +16,7 @@ import (
 	"lhotse-agent/iptables/pkg/validation"
 	"lhotse-agent/pkg/env"
 	idefavLog "lhotse-agent/pkg/log"
+	"lhotse-agent/util"
 	"log"
 	"net"
 	"net/http"
@@ -39,12 +40,12 @@ func (m *ManagementServer) Startup() error {
 		return err
 	}
 
-	go func() {
+	util.GO(func() {
 		err = m.Server.Serve(ln)
 		if err != http.ErrServerClosed {
 			log.Println("HTTP pserver:", err)
 		}
-	}()
+	})
 
 	return err
 }
