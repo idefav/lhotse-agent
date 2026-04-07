@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"golang.org/x/net/http/httpguts"
+	"net"
 	"net/textproto"
 	"net/url"
 	"strconv"
@@ -106,15 +107,29 @@ func (req *Request) FormatRequestLine() string {
 }
 
 func fillPort(r *Request) (err error) {
-	host := r.Host
-	index := strings.Index(host, ":")
-	if index < 0 {
-		r.Port = 80
+	switch {
+	case r.URL != nil && r.URL.Port() != "":
+		portI, convErr := strconv.Atoi(r.URL.Port())
+		r.Port = int32(portI)
+		return convErr
+	case r.Method == "CONNECT":
+		r.Port = 443
+		return nil
+	case r.Host == "":
+		r.Port = 0
+		return nil
 	}
-	var port = host[index+1:]
-	portI, err := strconv.Atoi(port)
-	r.Port = int32(portI)
-	return err
+
+	if _, _, splitErr := net.SplitHostPort(r.Host); splitErr == nil {
+		host := r.Host
+		index := strings.LastIndex(host, ":")
+		portI, convErr := strconv.Atoi(host[index+1:])
+		r.Port = int32(portI)
+		return convErr
+	}
+
+	r.Port = 80
+	return nil
 }
 
 func shouldClose(major, minor int, header Header, removeCloseHeader bool) bool {
@@ -137,13 +152,24 @@ func shouldClose(major, minor int, header Header, removeCloseHeader bool) bool {
 
 func fillContentLength(r *Request) (err error) {
 	contentLen := r.Header.get("Content-Length")
+	if contentLen == "" {
+		r.ContentLength = -1
+		return nil
+	}
 	cl, err := strconv.Atoi(contentLen)
+	if err != nil {
+		r.ContentLength = -1
+		return err
+	}
 	r.ContentLength = int64(cl)
-	return err
+	return nil
 }
 
 func fillAuthority(r *Request) {
-	authority := r.Header.get("Authorization")
+	authority := r.URL.Host
+	if authority == "" {
+		authority = r.Host
+	}
 	r.Authority = authority
 }
 
@@ -217,4 +243,26 @@ func fixPragmaCacheControl(header Header) {
 			header["Cache-Control"] = []string{"no-cache"}
 		}
 	}
+}
+
+func (req *Request) TargetDomain() string {
+	host := req.Host
+	if host == "" {
+		host = req.Authority
+	}
+	if host == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(host, "[") && strings.Contains(host, "]") {
+		trimmed := strings.TrimPrefix(host, "[")
+		if idx := strings.Index(trimmed, "]"); idx >= 0 {
+			return trimmed[:idx]
+		}
+	}
+
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		return parsedHost
+	}
+	return host
 }

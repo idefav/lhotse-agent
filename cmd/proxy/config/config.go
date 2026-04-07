@@ -8,6 +8,7 @@ type Config struct {
 	ProxyMgrPort      int32
 	InBoundProxyPort  int32
 	OutBoundProxyPort int32
+	UDPProxyPort      int32
 	ConnIdleTimeOut   time.Duration
 	CacheFileName     string
 	CacheDuration     time.Duration

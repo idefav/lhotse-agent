@@ -22,6 +22,8 @@ type Response struct {
 	Request          *Request
 	Chunked          bool
 	Close            bool
+	Upgraded         bool
+	UpgradeType      string
 }
 
 func ReadResponse(tp *textproto.Reader, req *Request) (resp *Response, err error) {
@@ -72,16 +74,21 @@ func ReadResponse(tp *textproto.Reader, req *Request) (resp *Response, err error
 
 	fillRespContentLength(resp)
 	fillRespTransferEncoding(resp)
-	shouldClose(resp.ProtoMajor, resp.ProtoMinor, resp.Header, false)
+	resp.Close = shouldClose(resp.ProtoMajor, resp.ProtoMinor, resp.Header, false)
 	resp.parseTransferEncoding()
+	fillRespUpgrade(resp)
 	return resp, nil
 }
 
 func fillRespContentLength(resp *Response) {
 	contentLengthS := resp.Header.get("Content-Length")
+	if contentLengthS == "" {
+		resp.ContentLength = -1
+		return
+	}
 	contentLen, err := strconv.Atoi(contentLengthS)
 	if err != nil {
-		resp.ContentLength = 0
+		resp.ContentLength = -1
 	} else {
 		resp.ContentLength = int64(contentLen)
 	}
@@ -89,6 +96,12 @@ func fillRespContentLength(resp *Response) {
 
 func fillRespTransferEncoding(resp *Response) {
 	resp.TransferEncoding = resp.Header.Values("Transfer-Encoding")
+}
+
+func fillRespUpgrade(resp *Response) {
+	upgrade := textproto.TrimString(resp.Header.Get("Upgrade"))
+	resp.UpgradeType = upgrade
+	resp.Upgraded = resp.StatusCode == 101 && upgrade != "" && hasToken(resp.Header.Get("Connection"), "upgrade")
 }
 
 func (resp *Response) FormatStatusLine() string {

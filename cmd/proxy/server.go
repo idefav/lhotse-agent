@@ -67,6 +67,7 @@ var ProxyCmd = &cobra.Command{
 		server.RegisterServer(mgr.NewManagementServer(mgrServer, ":"+strconv.Itoa(int(cfg.ProxyMgrPort))))
 		server.RegisterServer(NewInProxyServer(cfg.ConnIdleTimeOut, cfg.InBoundProxyPort, cfg))
 		server.RegisterServer(NewOutboundServer(cfg.ConnIdleTimeOut, cfg.OutBoundProxyPort, cfg))
+		server.RegisterServer(NewUDPServer(cfg.ConnIdleTimeOut, cfg.UDPProxyPort, cfg))
 
 		err := server.IdefavServerManager.Startup()
 		if err != nil {
@@ -89,6 +90,7 @@ func constructCfg() *config.Config {
 		ProxyMgrPort:      viper.GetInt32(constants.ProxyMgrPort),
 		InBoundProxyPort:  viper.GetInt32(constants.InBoundProxyPort),
 		OutBoundProxyPort: viper.GetInt32(constants.OutBoundProxyPort),
+		UDPProxyPort:      viper.GetInt32(constants.UDPProxyPort),
 		ConnIdleTimeOut:   viper.GetDuration(constants.ConnIdleTimeOut),
 		CacheDuration:     viper.GetDuration(constants.CacheDuration),
 	}
@@ -129,6 +131,10 @@ func bindFlags(cmd *cobra.Command, args []string) {
 		handleError(err)
 	}
 
+	if err := viper.BindPFlag(constants.UDPProxyPort, cmd.Flags().Lookup(constants.UDPProxyPort)); err != nil {
+		handleError(err)
+	}
+
 	if err := viper.BindPFlag(constants.ConnIdleTimeOut, cmd.Flags().Lookup(constants.ConnIdleTimeOut)); err != nil {
 		handleError(err)
 	}
@@ -150,6 +156,7 @@ func bindCmdFlags(rootCmd *cobra.Command) {
 	rootCmd.Flags().Int32P(constants.ProxyMgrPort, "m", 15030, "Proxy服务管理端口")
 	rootCmd.Flags().Int32P(constants.InBoundProxyPort, "i", 15006, "Proxy服务入口流量代理端口")
 	rootCmd.Flags().Int32P(constants.OutBoundProxyPort, "o", 15001, "Proxy服务出口流量代理端口")
+	rootCmd.Flags().Int32(constants.UDPProxyPort, 15009, "Proxy服务UDP流量代理端口")
 	rootCmd.Flags().Duration(constants.ConnIdleTimeOut, 60*time.Second, "空闲链接默认超时时间")
 	rootCmd.Flags().Duration(constants.CacheDuration, 60*time.Second, "配置定时保存时间间隔")
 }
