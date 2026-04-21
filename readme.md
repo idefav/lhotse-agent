@@ -10,6 +10,47 @@
 2. 数据面分为管理端和代理, 管理端具有较高权限, 可支持API接口实时开启流量拦截和实时下线流量拦截
 3. http协议代理支持, 支持KeepAlive
 4. tcp长链接支持
+5. 支持按出入站方向配置域名/IP/CIDR 访问策略，策略可在启动时动态拉取并周期刷新
+
+## Domain Policy
+
+`lhotse-agent proxy` 可通过 `--domain-policy-url` 开启动态访问策略。开启后启动时会请求配置地址，并追加 `app` 和 `ip` query 参数：
+
+```text
+GET <domain-policy-url>?app=<app-name>&ip=<instance-ip>
+```
+
+相关参数：
+
+- `--app-name`: 应用名称，配置动态策略 URL 时必填。
+- `--instance-ip`: 实例 IP；不配置时尝试自动读取本机非 loopback IP。
+- `--domain-policy-cache-file`: 策略缓存文件，默认 `/tmp/lhotse-domain-policy-cache.json`。
+- `--domain-policy-refresh-interval`: 周期刷新间隔，默认 `5m`，设为 `0` 禁用周期刷新。
+- `--domain-policy-fetch-timeout`: 拉取超时，默认 `5s`。
+- `--domain-policy-scope`: 启用方向，取值 `outbound`、`inbound` 或 `both`，默认 `outbound`。
+
+响应 JSON 示例：
+
+```json
+{
+  "rules": [
+    {
+      "direction": "outbound",
+      "mode": "default_allow",
+      "allowList": ["api.example.com", "*.trusted.example.com", "203.0.113.10", "10.0.0.0/8"],
+      "blockList": ["*.blocked.example.com", "198.51.100.0/24"]
+    },
+    {
+      "direction": "inbound",
+      "mode": "default_deny",
+      "allowList": ["admin.example.com", "192.0.2.10"],
+      "blockList": []
+    }
+  ]
+}
+```
+
+`mode=default_allow` 表示默认放行、命中 `blockList` 拒绝；`mode=default_deny` 表示默认拒绝、命中 `allowList` 放行。列表项支持精确域名、`*.example.com` 子域通配、精确 IP 和 CIDR。远程拉取失败时优先使用本地缓存；没有缓存时默认放行。
 
 ## 未来功能列表
 1. 服务健康检查

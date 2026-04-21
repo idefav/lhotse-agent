@@ -65,6 +65,9 @@ func (o *OutboundServer) proc(ln net.Listener) error {
 					if dst_host == "" {
 						dst_host = "192.168.0.105:28081"
 					}
+					if err := enforceRawDomainPolicy(o.Cfg, outboundDirection(), conn, reader, dst_host); err != nil {
+						return
+					}
 					logTLSConnection("outbound", conn, dst_host, reader)
 					destConn, err := net.Dial("tcp", dst_host)
 					if err != nil {

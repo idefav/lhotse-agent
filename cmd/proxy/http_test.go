@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"lhotse-agent/cmd/proxy/config"
+	"lhotse-agent/cmd/proxy/domainpolicy"
 	lhotseHttp "lhotse-agent/pkg/protocol/http"
 	"net"
 	"strings"
@@ -69,6 +71,43 @@ func TestProxyRawConnectionClearsDeadlineAndPreservesHalfClose(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("proxyRawConnection() did not finish after both sides half-closed")
+	}
+}
+
+func TestEnforceDomainPolicyWritesHTTPForbidden(t *testing.T) {
+	policy, err := domainpolicy.Compile(domainpolicy.ConfigDocument{Rules: []domainpolicy.RuleDocument{
+		{
+			Direction: domainpolicy.DirectionOutbound,
+			Mode:      domainpolicy.ModeDefaultDeny,
+			AllowList: []string{"api.example.com"},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+
+	client, proxyDown := net.Pipe()
+	defer client.Close()
+	defer proxyDown.Close()
+
+	cfg := &config.Config{
+		DomainPolicy: domainpolicy.NewStaticManager(policy, domainpolicy.ScopeOutbound),
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- enforceDomainPolicy(cfg, domainpolicy.DirectionOutbound, proxyDown, "blocked.example.com", "203.0.113.10:443")
+	}()
+
+	buf := make([]byte, 256)
+	n, err := client.Read(buf)
+	if err != nil {
+		t.Fatalf("client Read() error = %v", err)
+	}
+	if got := string(buf[:n]); !strings.Contains(got, "403 Forbidden") {
+		t.Fatalf("response = %q, want 403 Forbidden", got)
+	}
+	if err := <-done; !errors.Is(err, errProxyConnectionDone) {
+		t.Fatalf("enforceDomainPolicy() error = %v", err)
 	}
 }
 

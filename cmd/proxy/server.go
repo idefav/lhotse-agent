@@ -7,6 +7,7 @@ import (
 	"lhotse-agent/cmd/proxy/config"
 	"lhotse-agent/cmd/proxy/constants"
 	"lhotse-agent/cmd/proxy/data"
+	"lhotse-agent/cmd/proxy/domainpolicy"
 	"lhotse-agent/cmd/server"
 	"lhotse-agent/cmd/upgrade"
 	"lhotse-agent/pkg/log"
@@ -58,12 +59,23 @@ var ProxyCmd = &cobra.Command{
 		cfg := constructCfg()
 		log.Infof(cfg)
 
+		cfg.DomainPolicy = domainpolicy.NewManager(domainpolicy.Options{
+			URL:             cfg.DomainPolicyURL,
+			CacheFile:       cfg.DomainPolicyCacheFile,
+			RefreshInterval: cfg.DomainPolicyRefreshInterval,
+			FetchTimeout:    cfg.DomainPolicyFetchTimeout,
+			Scope:           cfg.DomainPolicyScope,
+			AppName:         cfg.AppName,
+			InstanceIP:      cfg.InstanceIP,
+		})
+		cfg.DomainPolicy.Start()
 		data.Load(cfg)
 
 		// proxy 管理服务
 		mgrServer := http.Server{
 			Handler: mgr.HttpMux,
 		}
+		domainpolicy.RegisterHandlers(mgr.HttpMux, cfg.DomainPolicy)
 		server.RegisterServer(mgr.NewManagementServer(mgrServer, ":"+strconv.Itoa(int(cfg.ProxyMgrPort))))
 		server.RegisterServer(NewInProxyServer(cfg.ConnIdleTimeOut, cfg.InBoundProxyPort, cfg))
 		server.RegisterServer(NewOutboundServer(cfg.ConnIdleTimeOut, cfg.OutBoundProxyPort, cfg))
@@ -77,6 +89,7 @@ var ProxyCmd = &cobra.Command{
 		upgrade.Ready()
 
 		upgrade.Stop(func() {
+			cfg.DomainPolicy.Stop()
 			server.IdefavServerManager.Shutdown()
 		})
 	},
@@ -84,15 +97,22 @@ var ProxyCmd = &cobra.Command{
 
 func constructCfg() *config.Config {
 	cfg := &config.Config{
-		ServerName:        viper.GetString(constants.ServerName),
-		FileName:          viper.GetString(constants.FileName),
-		CacheFileName:     viper.GetString(constants.CacheFileName),
-		ProxyMgrPort:      viper.GetInt32(constants.ProxyMgrPort),
-		InBoundProxyPort:  viper.GetInt32(constants.InBoundProxyPort),
-		OutBoundProxyPort: viper.GetInt32(constants.OutBoundProxyPort),
-		UDPProxyPort:      viper.GetInt32(constants.UDPProxyPort),
-		ConnIdleTimeOut:   viper.GetDuration(constants.ConnIdleTimeOut),
-		CacheDuration:     viper.GetDuration(constants.CacheDuration),
+		ServerName:                  viper.GetString(constants.ServerName),
+		FileName:                    viper.GetString(constants.FileName),
+		CacheFileName:               viper.GetString(constants.CacheFileName),
+		ProxyMgrPort:                viper.GetInt32(constants.ProxyMgrPort),
+		InBoundProxyPort:            viper.GetInt32(constants.InBoundProxyPort),
+		OutBoundProxyPort:           viper.GetInt32(constants.OutBoundProxyPort),
+		UDPProxyPort:                viper.GetInt32(constants.UDPProxyPort),
+		ConnIdleTimeOut:             viper.GetDuration(constants.ConnIdleTimeOut),
+		CacheDuration:               viper.GetDuration(constants.CacheDuration),
+		DomainPolicyURL:             viper.GetString(constants.DomainPolicyURL),
+		DomainPolicyCacheFile:       viper.GetString(constants.DomainPolicyCacheFile),
+		DomainPolicyRefreshInterval: viper.GetDuration(constants.DomainPolicyRefreshInterval),
+		DomainPolicyFetchTimeout:    viper.GetDuration(constants.DomainPolicyFetchTimeout),
+		DomainPolicyScope:           viper.GetString(constants.DomainPolicyScope),
+		AppName:                     viper.GetString(constants.AppName),
+		InstanceIP:                  viper.GetString(constants.InstanceIP),
 	}
 	return cfg
 }
@@ -138,6 +158,34 @@ func bindFlags(cmd *cobra.Command, args []string) {
 	if err := viper.BindPFlag(constants.ConnIdleTimeOut, cmd.Flags().Lookup(constants.ConnIdleTimeOut)); err != nil {
 		handleError(err)
 	}
+
+	if err := viper.BindPFlag(constants.DomainPolicyURL, cmd.Flags().Lookup(constants.DomainPolicyURL)); err != nil {
+		handleError(err)
+	}
+
+	if err := viper.BindPFlag(constants.DomainPolicyCacheFile, cmd.Flags().Lookup(constants.DomainPolicyCacheFile)); err != nil {
+		handleError(err)
+	}
+
+	if err := viper.BindPFlag(constants.DomainPolicyRefreshInterval, cmd.Flags().Lookup(constants.DomainPolicyRefreshInterval)); err != nil {
+		handleError(err)
+	}
+
+	if err := viper.BindPFlag(constants.DomainPolicyFetchTimeout, cmd.Flags().Lookup(constants.DomainPolicyFetchTimeout)); err != nil {
+		handleError(err)
+	}
+
+	if err := viper.BindPFlag(constants.DomainPolicyScope, cmd.Flags().Lookup(constants.DomainPolicyScope)); err != nil {
+		handleError(err)
+	}
+
+	if err := viper.BindPFlag(constants.AppName, cmd.Flags().Lookup(constants.AppName)); err != nil {
+		handleError(err)
+	}
+
+	if err := viper.BindPFlag(constants.InstanceIP, cmd.Flags().Lookup(constants.InstanceIP)); err != nil {
+		handleError(err)
+	}
 }
 
 func handleError(err error) {
@@ -159,6 +207,13 @@ func bindCmdFlags(rootCmd *cobra.Command) {
 	rootCmd.Flags().Int32(constants.UDPProxyPort, 15009, "Proxy服务UDP流量代理端口")
 	rootCmd.Flags().Duration(constants.ConnIdleTimeOut, 60*time.Second, "空闲链接默认超时时间")
 	rootCmd.Flags().Duration(constants.CacheDuration, 60*time.Second, "配置定时保存时间间隔")
+	rootCmd.Flags().String(constants.DomainPolicyURL, "", "Domain policy dynamic config URL")
+	rootCmd.Flags().String(constants.DomainPolicyCacheFile, "/tmp/lhotse-domain-policy-cache.json", "Domain policy cache file")
+	rootCmd.Flags().Duration(constants.DomainPolicyRefreshInterval, 5*time.Minute, "Domain policy refresh interval, 0 disables periodic refresh")
+	rootCmd.Flags().Duration(constants.DomainPolicyFetchTimeout, 5*time.Second, "Domain policy fetch timeout")
+	rootCmd.Flags().String(constants.DomainPolicyScope, domainpolicy.ScopeOutbound, "Domain policy scope: outbound, inbound, or both")
+	rootCmd.Flags().String(constants.AppName, "", "Application name for dynamic domain policy fetch")
+	rootCmd.Flags().String(constants.InstanceIP, "", "Instance IP for dynamic domain policy fetch")
 }
 
 func init() {

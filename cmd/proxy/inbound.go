@@ -93,6 +93,9 @@ func (inProxyServer *InProxyServer) proc(ln net.Listener) error {
 						dst_host = "192.168.0.105:28081"
 						dialTarget = dst_host
 					}
+					if err := enforceRawDomainPolicy(inProxyServer.Cfg, inboundDirection(), conn, reader, dst_host); err != nil {
+						return
+					}
 					logTLSConnection("inbound", conn, dst_host, reader)
 					destConn, err := net.Dial("tcp", dialTarget)
 					if err != nil {

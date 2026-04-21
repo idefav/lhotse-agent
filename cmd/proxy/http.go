@@ -80,6 +80,9 @@ func (inProxyServer *InProxyServer) HttpProc2(conn net.Conn, reader *bufio.Reade
 	}
 	request.RemoteAddr = conn.RemoteAddr().String()
 	request.LocalAddr = conn.LocalAddr().String()
+	if err := enforceDomainPolicy(inProxyServer.Cfg, inboundDirection(), conn, request.TargetDomain(), dstHost); err != nil {
+		return err
+	}
 	logHTTPRequest("inbound", conn, dstHost, request)
 	return proxyHTTPRequest("inbound", conn, reader, request, dstHost, dialTarget, inProxyServer.Cfg.ServerName)
 }
@@ -88,6 +91,10 @@ func (o *OutboundServer) HttpProc(conn net.Conn, reader *bufio.Reader, dstHost s
 	tp := textproto.NewReader(reader)
 	request, err := lhotseHttp.ReadRequest(tp)
 	if err != nil {
+		return err
+	}
+
+	if err := enforceDomainPolicy(o.Cfg, outboundDirection(), conn, request.TargetDomain(), dstHost); err != nil {
 		return err
 	}
 
