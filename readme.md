@@ -1,35 +1,69 @@
+# Lhotse Agent
 
+Lhotse Agent 是一款专为 AI Agent 生产环境设计的**透明网络代理与凭证保险箱 (Transparent Proxy & Credential Vault)**。
+它以 Kubernetes Sidecar 形式运行，在最底层网络边界拦截容器的所有出入站流量，执行严格的访问控制策略（Domain Policy）和零信任凭证注入（Credential Injection）。
 
-# idefav mesh 数据面
+## 核心特性 (Core Features)
 
-## 介绍
-从零开始垒砌 mesh 数据面网络代理代码, 目前支持http协议代理和tcp代理
+1. **透明流量劫持 (Transparent Interception)**
+   - 配合 `lhotse-iptables` Init Container，自动在内核层使用 `iptables NAT REDIRECT` 将所有出站/入站 TCP 流量无感劫持至 Lhotse 代理进程。
+   - 利用 `SO_ORIGINAL_DST` 完美还原应用程序试图访问的原始目的 IP 和端口，对业务代码完全透明（无需配置 `HTTP_PROXY`）。
 
-## 功能
-1. 支持原地升级, 升级新版本时, http流量无损
-2. 数据面分为管理端和代理, 管理端具有较高权限, 可支持API接口实时开启流量拦截和实时下线流量拦截
-3. http协议代理支持, 支持KeepAlive
-4. tcp长链接支持
-5. 支持按出入站方向配置域名/IP/CIDR 访问策略，策略可在启动时动态拉取并周期刷新
+2. **多协议检测与审计 (Protocol Detection & Audit)**
+   - 自动窥探 (Peek) 连接的前 5 个字节，精准识别 HTTP、TLS (HTTPS) 和纯 TCP 流量。
+   - 基于提取出的 HTTP Host 头或 TLS SNI 扩展字段，执行后续的访问策略。
+   - 所有连接的源地址、目标地址、协议类型及放行/阻断决策均被详细审计记录。
 
-## Domain Policy
+3. **动态网络沙箱策略 (Dynamic Domain Policy)**
+   - 支持基于 域名、通配符（如 `*.github.com`）、IP 和 CIDR 块的 AllowList / BlockList 控制。
+   - 默认**阻断**高危内部端点访问（如云厂商元数据接口 `169.254.169.254` 防护 SSRF）。
+   - 策略可在启动时从远端统一配置中心动态拉取，并支持周期性无损刷新。
 
-`lhotse-agent proxy` 可通过 `--domain-policy-url` 开启动态访问策略。开启后启动时会请求配置地址，并追加 `app` 和 `ip` query 参数：
+4. **MITM 凭证动态注入 (Credential Vault) *(New)***
+   - Agent 容器内无需存放任何明文 API Key (如 GitHub Token, Jira API Key)。
+   - Lhotse Agent 对白名单目标（如 `api.github.com`）执行 MITM TLS 劫持，解密 HTTP 流量，向统一控制面查询当前域名的真实 Token，并将其动态注入到 HTTP Header (`Authorization: Bearer <token>`) 后再加密转发给目标服务器。
+   - 真正做到“Agent 拿得到调用凭证引用，但永远传不出明文密钥”，彻底防范大模型 Prompt Injection 导致的密钥泄露。
 
-```text
-GET <domain-policy-url>?app=<app-name>&ip=<instance-ip>
+5. **无损热升级 (Zero-Downtime Upgrade)**
+   - 通过 `tableflip` 等机制支持进程平滑重启，升级 Lhotse Agent 版本时正在处理的 HTTP 长连接不会被强行中断。
+
+---
+
+## 启动与参数说明 (Usage & Flags)
+
+启动透明代理：
+
+```bash
+lhotse-agent proxy [flags]
 ```
 
-相关参数：
+### 核心监听端口
+- `-o, --outbound-port int32`: 出口流量透明代理监听端口，默认 `15001`
+- `-i, --inbound-port int32`: 入口流量透明代理监听端口，默认 `15006`
+- `-m, --mgr-port int32`: 内部管理与监控端口，默认 `15030`
+- `--udp-port int32`: UDP 流量代理端口，默认 `15009`
 
-- `--app-name`: 应用名称，配置动态策略 URL 时必填。
-- `--instance-ip`: 实例 IP；不配置时尝试自动读取本机非 loopback IP。
-- `--domain-policy-cache-file`: 策略缓存文件，默认 `/tmp/lhotse-domain-policy-cache.json`。
-- `--domain-policy-refresh-interval`: 周期刷新间隔，默认 `5m`，设为 `0` 禁用周期刷新。
-- `--domain-policy-fetch-timeout`: 拉取超时，默认 `5s`。
-- `--domain-policy-scope`: 启用方向，取值 `outbound`、`inbound` 或 `both`，默认 `outbound`。
+### 动态策略配置 (Domain Policy)
+如果您的组织有统一的控制面下发白名单，可以使用以下参数开启动态策略同步：
 
-响应 JSON 示例：
+- `--domain-policy-url string`: 动态拉取域名/IP 访问控制策略的 HTTP API 地址。
+- `--app-name string`: 提交给策略中心的当前应用名称（必填，当 url 存在时）。
+- `--instance-ip string`: 当前实例的 IP（非必填，自动探测）。
+- `--domain-policy-scope string`: 策略作用方向：`outbound` (默认)、`inbound` 或 `both`。
+- `--domain-policy-refresh-interval duration`: 策略定期刷新间隔，默认 `5m` (5 分钟)；设为 `0` 代表仅启动时拉取一次。
+- `--domain-policy-fetch-timeout duration`: 请求策略的超时时间，默认 `5s`。
+- `--domain-policy-cache-file string`: 拉取成功后的本地持久化缓存文件，默认 `/tmp/lhotse-domain-policy-cache.json`。
+
+> *当策略 URL 拉取失败时，Lhotse 会自动退级使用本地 `cache-file`，如果缓存也不存在，则默认回退到全放行模式以保障可用性，请在测试时留意。*
+
+---
+
+## 策略响应示例 (Domain Policy Format)
+
+当配置了 `--domain-policy-url`，Lhotse 启动时会发起以下 GET 请求：
+`GET <domain-policy-url>?app=<app-name>&ip=<instance-ip>`
+
+配置中心应返回如下结构的 JSON：
 
 ```json
 {
@@ -37,8 +71,17 @@ GET <domain-policy-url>?app=<app-name>&ip=<instance-ip>
     {
       "direction": "outbound",
       "mode": "default_allow",
-      "allowList": ["api.example.com", "*.trusted.example.com", "203.0.113.10", "10.0.0.0/8"],
-      "blockList": ["*.blocked.example.com", "198.51.100.0/24"]
+      "allowList": [
+        "api.example.com", 
+        "*.trusted.company.com", 
+        "203.0.113.10", 
+        "10.0.0.0/8"
+      ],
+      "blockList": [
+        "*.blocked.example.com", 
+        "169.254.169.254",
+        "198.51.100.0/24"
+      ]
     },
     {
       "direction": "inbound",
@@ -49,27 +92,53 @@ GET <domain-policy-url>?app=<app-name>&ip=<instance-ip>
   ]
 }
 ```
+* **`default_allow`**: 默认放行所有流量，只有命中了 `blockList` 中的域名/IP才会被阻断。
+* **`default_deny`**: 默认拒绝所有流量，只有命中了 `allowList` 的目标才会被放行 (严苛模式，推荐高价值 Agent 采用)。
 
-`mode=default_allow` 表示默认放行、命中 `blockList` 拒绝；`mode=default_deny` 表示默认拒绝、命中 `allowList` 放行。列表项支持精确域名、`*.example.com` 子域通配、精确 IP 和 CIDR。远程拉取失败时优先使用本地缓存；没有缓存时默认放行。
+---
 
-## 未来功能列表
-1. 服务健康检查
-2. 基础信息上报
-3. 配置协议规范, 支持启动自动初始化配置, 配置本地存储, 持久化, 异步刷新配置
-4. 增量配置更新
-5. 关键监控指标
+## Kubernetes 部署示例
 
-## GitHub Release
-仓库新增了 GitHub Actions 自动发布流程，工作流文件位于 `.github/workflows/release.yml`。
+Lhotse 总是以 Init Container (写入 iptables) + Sidecar (代理进程) 的模式组合部署。
 
-- 推送形如 `v*` 的 tag 时，会自动执行测试，构建 `linux/amd64`、`linux/arm64` 的 `lhotse-agent`、`lhotse-iptables` 和 `lhotse-clean-iptables`，打包为 release 资产并附带 SHA256 校验文件。
-- 同时会构建并推送多平台镜像到 GitHub Container Registry：`ghcr.io/<owner>/<repo>:<tag>`，支持 `linux/amd64` 和 `linux/arm64`；非预发布 tag 还会更新 `latest`。
-- 也可以通过 `workflow_dispatch` 手动触发，但需要填写一个已经存在的 tag。
-- 主二进制的版本号通过 `-ldflags` 注入到 `cmd/mgr.Version`，因此 release 产物和镜像里的 `lhotse-agent version` 会返回对应 tag。
+### 1. Init 容器拦截流量
+Init 容器需要使用特权 (`NET_ADMIN` 和 `NET_RAW`) 来写入路由表，将进出站流量全部打给 15001 和 15006：
 
-示例：
-
-```bash
-git tag v0.0.3
-git push origin v0.0.3
+```yaml
+initContainers:
+  - name: lhotse-iptables
+    image: ghcr.io/idefav/cloud-claw-lhotse-sidecar:latest
+    command: ["/usr/local/bin/lhotse-init-iptables.sh"]
+    securityContext:
+      runAsUser: 0
+      capabilities:
+        add: ["NET_ADMIN", "NET_RAW"]
 ```
+
+### 2. Lhotse Agent Sidecar
+运行网络代理进程，使用专属用户 `UID 1337`。`iptables` 规则会通过匹配 UID 来放行 1337 发出的流量，防止代理自身的流量陷入死循环：
+
+```yaml
+containers:
+  - name: lhotse-agent
+    image: ghcr.io/idefav/cloud-claw-lhotse-sidecar:latest
+    args:
+      - proxy
+      - --app-name=my-agent
+      - --domain-policy-url=http://control-plane.local/api/v1/policy
+    securityContext:
+      runAsUser: 1337
+      runAsGroup: 1337
+      capabilities:
+        add: ["NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"]
+```
+
+---
+
+## 自动构建与发布 (CI/CD)
+
+本仓库已配置 GitHub Actions 自动发布流水线 (`.github/workflows/release.yml`)。
+
+- **自动打标编译**：推送形如 `v*` (如 `v1.0.0`) 的 Tag 时，将自动构建针对 `linux/amd64` 和 `linux/arm64` 架构的 `lhotse-agent`、`lhotse-iptables` 二进制文件，并创建 GitHub Release。
+- **自动构建镜像**：发布时，CI 将自动构建双架构的容器镜像并推送至 GitHub Container Registry (`ghcr.io/<owner>/<repo>:<tag>`)。
+- **自动获取版本**：Go 编译时的 `-ldflags` 会将 Github 的 tag 号动态注入到代码中，执行 `lhotse-agent version` 即可查看当前部署的版本和修订信息。
