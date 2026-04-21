@@ -1,0 +1,8 @@
+.git
+.github
+.tmp
+dist
+*.tar.gz
+lhotse-agent
+iptables/iptables
+clean-iptables/clean-iptables

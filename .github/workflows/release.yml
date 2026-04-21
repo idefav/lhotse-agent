@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing git tag to release, for example v0.0.3"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build release binaries
+        run: |
+          set -euxo pipefail
+
+          mkdir -p dist/bin dist/release
+
+          for arch in amd64 arm64; do
+            out_dir="dist/bin/linux-${arch}"
+            mkdir -p "${out_dir}"
+
+            CGO_ENABLED=0 GOOS=linux GOARCH="${arch}" \
+              go build \
+              -trimpath \
+              -ldflags="-s -w -X lhotse-agent/cmd/mgr.Version=${RELEASE_TAG}" \
+              -o "${out_dir}/lhotse-agent" \
+              .
+
+            CGO_ENABLED=0 GOOS=linux GOARCH="${arch}" \
+              go build \
+              -trimpath \
+              -o "${out_dir}/lhotse-iptables" \
+              ./iptables
+
+            CGO_ENABLED=0 GOOS=linux GOARCH="${arch}" \
+              go build \
+              -trimpath \
+              -o "${out_dir}/lhotse-clean-iptables" \
+              ./clean-iptables
+
+            tar -C "${out_dir}" \
+              -czf "dist/release/lhotse-agent-${RELEASE_TAG}-linux-${arch}.tar.gz" \
+              lhotse-agent lhotse-iptables lhotse-clean-iptables
+          done
+
+          sha256sum dist/release/*.tar.gz > "dist/release/lhotse-agent-${RELEASE_TAG}-checksums-sha256.txt"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "${GITHUB_OUTPUT}"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=raw,value=${{ env.RELEASE_TAG }}
+            type=raw,value=latest,enable=${{ !contains(env.RELEASE_TAG, '-') }}
+
+      - name: Build and push multi-platform image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ env.RELEASE_TAG }}
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Lhotse Agent ${{ env.RELEASE_TAG }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          files: |
+            dist/release/lhotse-agent-${{ env.RELEASE_TAG }}-linux-amd64.tar.gz
+            dist/release/lhotse-agent-${{ env.RELEASE_TAG }}-linux-arm64.tar.gz
+            dist/release/lhotse-agent-${{ env.RELEASE_TAG }}-checksums-sha256.txt

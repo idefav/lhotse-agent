@@ -168,7 +168,8 @@ func writeHTTPRequest(upstream net.Conn, reader *bufio.Reader, request *lhotseHt
 	}
 	requestHeaderText += CRLF
 
-	dstWriter := textproto.NewWriter(bufio.NewWriter(upstream))
+	bufferedWriter := bufio.NewWriter(upstream)
+	dstWriter := textproto.NewWriter(bufferedWriter)
 	if _, err := dstWriter.W.Write([]byte(requestHeaderText)); err != nil {
 		return err
 	}
@@ -178,9 +179,15 @@ func writeHTTPRequest(upstream net.Conn, reader *bufio.Reader, request *lhotseHt
 
 	switch {
 	case requestIsChunked(request):
-		return proxyChunkedBody(dstWriter.W, reader)
+		if err := proxyChunkedBody(dstWriter.W, reader); err != nil {
+			return err
+		}
+		return dstWriter.W.Flush()
 	case request.ContentLength > 0:
-		return copyFixedLength(dstWriter.W, reader, request.ContentLength)
+		if err := copyFixedLength(dstWriter.W, reader, request.ContentLength); err != nil {
+			return err
+		}
+		return dstWriter.W.Flush()
 	default:
 		return nil
 	}

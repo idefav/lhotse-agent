@@ -17,3 +17,18 @@
 3. 配置协议规范, 支持启动自动初始化配置, 配置本地存储, 持久化, 异步刷新配置
 4. 增量配置更新
 5. 关键监控指标
+
+## GitHub Release
+仓库新增了 GitHub Actions 自动发布流程，工作流文件位于 `.github/workflows/release.yml`。
+
+- 推送形如 `v*` 的 tag 时，会自动执行测试，构建 `linux/amd64`、`linux/arm64` 的 `lhotse-agent`、`lhotse-iptables` 和 `lhotse-clean-iptables`，打包为 release 资产并附带 SHA256 校验文件。
+- 同时会构建并推送多平台镜像到 GitHub Container Registry：`ghcr.io/<owner>/<repo>:<tag>`，支持 `linux/amd64` 和 `linux/arm64`；非预发布 tag 还会更新 `latest`。
+- 也可以通过 `workflow_dispatch` 手动触发，但需要填写一个已经存在的 tag。
+- 主二进制的版本号通过 `-ldflags` 注入到 `cmd/mgr.Version`，因此 release 产物和镜像里的 `lhotse-agent version` 会返回对应 tag。
+
+示例：
+
+```bash
+git tag v0.0.3
+git push origin v0.0.3
+```
