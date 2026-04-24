@@ -56,6 +56,52 @@ lhotse-agent proxy [flags]
 
 > *当策略 URL 拉取失败时，Lhotse 会自动退级使用本地 `cache-file`，如果缓存也不存在，则默认回退到全放行模式以保障可用性，请在测试时留意。*
 
+### MITM 与凭证保险箱参数 (Credential Vault)
+
+当需要对特定 HTTPS 目标做 TLS MITM 和动态凭证注入时，启用以下参数：
+
+- `--mitm-enabled`: 开启 MITM 模式。开启后会从 Vault 拉取 CA、运行时规则和凭证。
+- `--vault-uri string`: Vault / 控制面基地址，Lhotse 会访问 `/internal/ca/keypair`、`/internal/credential-runtime-config`、`/internal/credentials/resolve`、`/internal/identity/resolve`。
+- `--agent-id string`: 当前 Agent 标识，用于凭证匹配。
+- `--upstream-ca-file string`: MITM 后 sidecar 重拨真实上游时额外追加的 PEM trust bundle。未设置时会尝试读取 `SSL_CERT_FILE`，再回退到系统根证书。
+- `--ca-poll-interval duration`: CA 轮询刷新间隔，默认 `5m`。
+- `--ca-init-timeout duration`: 启动阶段阻塞等待首个 CA 的超时时间，默认 `2m`。
+- `--credential-runtime-cache-file string`: MITM 运行时配置缓存文件，默认 `/tmp/lhotse-credential-runtime-cache.json`。
+- `--credential-runtime-refresh-interval duration`: 运行时配置刷新间隔，默认 `5m`。
+- `--credential-runtime-fetch-timeout duration`: 运行时配置拉取超时，默认 `5s`。
+
+管理端口 `:15030` 会额外暴露：
+
+- `GET /ca.crt`: 当前系统根证书 + Lhotse Active CA bundle，供业务容器下载后建立信任。
+- `GET /credential-runtime`: 当前 MITM 运行时状态。
+- `POST /credential-runtime/reload`: 触发运行时配置立即刷新。
+
+如果真实上游使用私有 CA，建议显式挂载 PEM 文件并通过 `--upstream-ca-file` 传入；`SSL_CERT_FILE` 只作为未设置该参数时的 fallback。
+
+### 业务容器 CA 引导脚本
+
+仓库提供 `scripts/lhotse-ca-init.sh`，用于在业务进程启动前拉取并持续刷新 `:15030/ca.crt`。
+
+默认行为：
+
+- 首次启动最多等待 `120s`，按 `2s` 间隔重试拉取 `http://127.0.0.1:15030/ca.crt`
+- 成功后写入 `/tmp/lhotse-ca-bundle.pem`
+- 自动导出 `SSL_CERT_FILE`、`REQUESTS_CA_BUNDLE`、`NODE_EXTRA_CA_CERTS`
+- 后台每 `300s` 刷新一次 CA bundle
+
+可选环境变量：
+
+- `LHOTSE_CA_URL`
+- `LHOTSE_CA_FILE`
+- `LHOTSE_CA_REFRESH_INTERVAL`
+- `LHOTSE_CA_INIT_TIMEOUT`
+
+示例：
+
+```bash
+/workspace/scripts/lhotse-ca-init.sh python app.py
+```
+
 ---
 
 ## 策略响应示例 (Domain Policy Format)
@@ -126,11 +172,25 @@ containers:
       - proxy
       - --app-name=my-agent
       - --domain-policy-url=http://control-plane.local/api/v1/policy
+      - --mitm-enabled=true
+      - --vault-uri=http://control-plane.local
+      - --agent-id=my-agent
     securityContext:
       runAsUser: 1337
       runAsGroup: 1337
       capabilities:
         add: ["NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"]
+```
+
+如果业务容器需要信任 Lhotse MITM CA，可在业务容器启动命令前包一层：
+
+```yaml
+containers:
+  - name: app
+    image: ghcr.io/example/app:latest
+    command: ["/bin/sh", "-lc"]
+    args:
+      - /workspace/scripts/lhotse-ca-init.sh python app.py
 ```
 
 ---

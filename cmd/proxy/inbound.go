@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"lhotse-agent/cmd/upgrade"
+	lhotseTLS "lhotse-agent/pkg/protocol/tls"
 	"lhotse-agent/pkg/socket"
 	"lhotse-agent/util"
 	"net"
@@ -59,16 +60,20 @@ func (inProxyServer *InProxyServer) proc(ln net.Listener) error {
 
 			var dst_host = ""
 			var dialTarget = ""
-			_, host, _, err := socket.GetOriginalDst(conn.(*net.TCPConn))
+			_, host, newConn, err := socket.GetOriginalDst(conn.(*net.TCPConn))
 			if err == nil {
 				dst_host = host
 				dialTarget = inboundDialTarget(host)
+				if newConn != nil {
+					conn = newConn
+					defer newConn.Close()
+				}
 			}
 
 			for {
 				//log.Println("准备读取")
 				conn.SetReadDeadline(time.Now().Add(inProxyServer.IdleTimeOut))
-				reader := bufio.NewReader(conn)
+				reader := bufio.NewReaderSize(conn, lhotseTLS.ClientHelloPeekBufferSize)
 				peek, err := reader.Peek(5)
 				if err != nil {
 					//log.Println("连接断开")

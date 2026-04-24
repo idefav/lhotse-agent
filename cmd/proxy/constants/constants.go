@@ -17,4 +17,13 @@ const (
 	DomainPolicyScope           = "domain-policy-scope"
 	AppName                     = "app-name"
 	InstanceIP                  = "instance-ip"
+	MITMEnabled                 = "mitm-enabled"
+	VaultURI                    = "vault-uri"
+	AgentID                     = "agent-id"
+	UpstreamCAFile              = "upstream-ca-file"
+	CAPollInterval              = "ca-poll-interval"
+	CAInitTimeout               = "ca-init-timeout"
+	CredentialRuntimeCacheFile  = "credential-runtime-cache-file"
+	CredentialRuntimeRefresh    = "credential-runtime-refresh-interval"
+	CredentialRuntimeFetch      = "credential-runtime-fetch-timeout"
 )

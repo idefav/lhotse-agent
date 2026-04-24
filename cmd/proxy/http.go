@@ -102,6 +102,11 @@ func (o *OutboundServer) HttpProc(conn net.Conn, reader *bufio.Reader, dstHost s
 	if matchErr == nil {
 		dstHost = fmt.Sprintf("%s:%s", endpoint.Ip, endpoint.Port)
 	}
+
+	if _, err := o.applyCredentialInjection(request.TargetDomain(), request.Header.Get, request.Header.Set); err != nil {
+		return err
+	}
+
 	logHTTPRequest("outbound", conn, dstHost, request)
 	return proxyHTTPRequest("outbound", conn, reader, request, dstHost, dstHost, o.Cfg.ServerName)
 }

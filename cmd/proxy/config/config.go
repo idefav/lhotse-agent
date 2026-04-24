@@ -24,4 +24,13 @@ type Config struct {
 	DomainPolicyScope           string
 	AppName                     string
 	InstanceIP                  string
+	MITMEnabled                 bool
+	VaultURI                    string
+	AgentID                     string
+	UpstreamCAFile              string
+	CAPollInterval              time.Duration
+	CAInitTimeout               time.Duration
+	CredentialRuntimeCacheFile  string
+	CredentialRuntimeRefresh    time.Duration
+	CredentialRuntimeFetch      time.Duration
 }

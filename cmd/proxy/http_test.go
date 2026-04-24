@@ -74,6 +74,64 @@ func TestProxyRawConnectionClearsDeadlineAndPreservesHalfClose(t *testing.T) {
 	}
 }
 
+func TestSingleConnListenerWaitsForAcceptedConnClose(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+
+	listener := &singleConnListener{conn: server}
+	accepted, err := listener.Accept()
+	if err != nil {
+		t.Fatalf("first Accept() error = %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, acceptErr := listener.Accept()
+		errCh <- acceptErr
+	}()
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("second Accept() returned before conn close: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if err := accepted.Close(); err != nil {
+		t.Fatalf("accepted Close() error = %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, net.ErrClosed) {
+			t.Fatalf("second Accept() error = %v, want %v", err, net.ErrClosed)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("second Accept() did not return after conn close")
+	}
+}
+
+func TestMITMTransportCacheReusesTransportPerServerName(t *testing.T) {
+	cache := newMITMTransportCache(nil)
+
+	first := cache.Transport("api.example.com")
+	second := cache.Transport("api.example.com")
+	other := cache.Transport("other.example.com")
+
+	if first != second {
+		t.Fatal("Transport() did not reuse transport for the same server name")
+	}
+	if first == other {
+		t.Fatal("Transport() reused transport for a different server name")
+	}
+	if first.TLSClientConfig == nil {
+		t.Fatal("first transport TLSClientConfig is nil")
+	}
+	if first.TLSClientConfig.ServerName != "api.example.com" {
+		t.Fatalf("first transport ServerName = %q, want api.example.com", first.TLSClientConfig.ServerName)
+	}
+	cache.CloseIdleConnections()
+}
+
 func TestEnforceDomainPolicyWritesHTTPForbidden(t *testing.T) {
 	policy, err := domainpolicy.Compile(domainpolicy.ConfigDocument{Rules: []domainpolicy.RuleDocument{
 		{

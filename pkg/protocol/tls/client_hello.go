@@ -11,6 +11,10 @@ const (
 	recordTypeHandshake      = 22
 	handshakeTypeClientHello = 1
 	maxTLSRecordLen          = 16384 + 2048
+
+	// ClientHelloPeekBufferSize is large enough to buffer the TLS record header
+	// and the largest ClientHello record this parser accepts.
+	ClientHelloPeekBufferSize = 5 + maxTLSRecordLen
 )
 
 var errClientHelloTruncated = errors.New("truncated tls client hello")
